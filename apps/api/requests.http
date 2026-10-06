@@ -1,0 +1,125 @@
+# Ручная проверка этапа 3 (VS Code REST Client / JetBrains HTTP Client).
+# Перед прогоном: pnpm db:up, pnpm dev. Для чистого прогона очистить таблицу:
+#   docker exec memequiz-dev-postgres-1 psql -U <POSTGRES_USER> -d <POSTGRES_DB> -c "TRUNCATE results"
+# Правильные ответы тестового questions.json: sample-1=d, sample-2=b, sample-3=a, sample-4=b, sample-5=c
+
+@api = http://localhost:3000/api
+
+### Health
+GET {{api}}/health
+
+### Вопросы: в ответе не должно быть correctId, варианты перемешаны
+GET {{api}}/quiz
+
+### Статус до прохождения → { completed: false }
+GET {{api}}/me/status?nickname=Вася
+
+### Первая отправка, 5/5 → isFirst: true, score: 5
+POST {{api}}/quiz/submit
+Content-Type: application/json
+
+{
+  "nickname": "  Вася  ",
+  "answers": [
+    { "questionId": "sample-1", "optionId": "d" },
+    { "questionId": "sample-2", "optionId": "b" },
+    { "questionId": "sample-3", "optionId": "a" },
+    { "questionId": "sample-4", "optionId": "b" },
+    { "questionId": "sample-5", "optionId": "c" }
+  ]
+}
+
+### Повторная отправка тем же ником в другом регистре, 0/5 → isFirst: false, score: 5 (первый)
+POST {{api}}/quiz/submit
+Content-Type: application/json
+
+{
+  "nickname": "вася",
+  "answers": [
+    { "questionId": "sample-1", "optionId": "a" },
+    { "questionId": "sample-2", "optionId": "a" },
+    { "questionId": "sample-3", "optionId": "b" },
+    { "questionId": "sample-4", "optionId": "a" },
+    { "questionId": "sample-5", "optionId": "a" }
+  ]
+}
+
+### Статус после прохождения → { completed: true, result: { score: 5, ... } }
+GET {{api}}/me/status?nickname=ВАСЯ
+
+### Второй участник с тем же счётом позже → в лидерборде ниже Васи
+POST {{api}}/quiz/submit
+Content-Type: application/json
+
+{
+  "nickname": "Петя",
+  "answers": [
+    { "questionId": "sample-1", "optionId": "d" },
+    { "questionId": "sample-2", "optionId": "b" },
+    { "questionId": "sample-3", "optionId": "a" },
+    { "questionId": "sample-4", "optionId": "b" },
+    { "questionId": "sample-5", "optionId": "c" }
+  ]
+}
+
+### Третий участник, 2/5
+POST {{api}}/quiz/submit
+Content-Type: application/json
+
+{
+  "nickname": "kolya_2000",
+  "answers": [
+    { "questionId": "sample-1", "optionId": "d" },
+    { "questionId": "sample-2", "optionId": "b" },
+    { "questionId": "sample-3", "optionId": "b" },
+    { "questionId": "sample-4", "optionId": "a" },
+    { "questionId": "sample-5", "optionId": "a" }
+  ]
+}
+
+### Лидерборд → Вася (1), Петя (2), kolya_2000 (3)
+GET {{api}}/leaderboard
+
+### Лидерборд с лимитом
+GET {{api}}/leaderboard?limit=2
+
+# ---------- Ошибки: всё ниже должно вернуть 400 ----------
+
+### Ник короче 2 символов
+POST {{api}}/quiz/submit
+Content-Type: application/json
+
+{ "nickname": " a ", "answers": [{ "questionId": "sample-1", "optionId": "a" }] }
+
+### Ник из пробелов
+GET {{api}}/me/status?nickname=%20%20%20
+
+### Недопустимые символы в нике
+POST {{api}}/quiz/submit
+Content-Type: application/json
+
+{ "nickname": "<script>", "answers": [{ "questionId": "sample-1", "optionId": "a" }] }
+
+### Неверное количество ответов
+POST {{api}}/quiz/submit
+Content-Type: application/json
+
+{ "nickname": "Тест", "answers": [{ "questionId": "sample-1", "optionId": "a" }] }
+
+### Дубль вопроса, неизвестный вопрос, чужой вариант
+POST {{api}}/quiz/submit
+Content-Type: application/json
+
+{
+  "nickname": "Тест",
+  "answers": [
+    { "questionId": "sample-1", "optionId": "a" },
+    { "questionId": "sample-1", "optionId": "b" },
+    { "questionId": "nope", "optionId": "a" },
+    { "questionId": "sample-4", "optionId": "d" },
+    { "questionId": "sample-5", "optionId": "a" }
+  ]
+}
+
+### limit вне диапазона
+GET {{api}}/leaderboard?limit=1000
