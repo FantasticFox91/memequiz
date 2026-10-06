@@ -1,0 +1,124 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Сойка</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <style>
+    :root {
+      --bg: var(--tg-theme-bg-color, #ffffff);
+      --text: var(--tg-theme-text-color, #111111);
+      --hint: var(--tg-theme-hint-color, #888888);
+      --button: var(--tg-theme-button-color, #2481cc);
+      --button-text: var(--tg-theme-button-text-color, #ffffff);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 24px;
+      padding:
+        calc(16px + var(--tg-content-safe-area-inset-top, 0px) + var(--tg-safe-area-inset-top, 0px))
+        16px
+        calc(16px + var(--tg-content-safe-area-inset-bottom, 0px) + var(--tg-safe-area-inset-bottom, 0px));
+    }
+    .jay { width: min(80vw, 320px); height: auto; border-radius: 24px; transform-origin: 50% 90%; user-select: none; -webkit-user-drag: none; }
+    .jay.hop { animation: hop .4s ease-out; }
+    @keyframes hop {
+      0%, 100% { transform: translateY(0) rotate(0); }
+      40% { transform: translateY(-18px) rotate(-6deg); }
+    }
+    .hint { color: var(--hint); font-size: 14px; margin: -12px 0 0; }
+    button {
+      font: inherit; font-size: 20px; font-weight: 600;
+      border: 0; border-radius: 14px; padding: 14px 48px;
+      background: var(--button); color: var(--button-text);
+      cursor: pointer; touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      transition: transform .1s;
+    }
+    button:active { transform: scale(.94); }
+    .emoji {
+      position: fixed;
+      left: 0; top: 0;
+      font-size: 32px;
+      pointer-events: none;
+      will-change: transform, opacity;
+      animation: fly var(--dur) cubic-bezier(.2, .7, .4, 1) forwards;
+    }
+    @keyframes fly {
+      0%   { transform: translate(var(--x0), var(--y0)) scale(.3) rotate(0); opacity: 1; }
+      70%  { opacity: 1; }
+      100% { transform: translate(var(--x1), var(--y1)) scale(var(--s)) rotate(var(--r)); opacity: 0; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .jay.hop { animation: none; }
+      .emoji { animation-duration: .01s; }
+    }
+  </style>
+</head>
+<body>
+  <img class="jay" id="jay" src="soika.webp" alt="Сойка" width="1360" height="1150">
+
+  <p class="hint">Нажми на кнопку</p>
+  <button id="btn" type="button">Сойка</button>
+
+  <script>
+    const tg = window.Telegram?.WebApp;
+    if (tg) {
+      tg.ready();
+      tg.expand();
+    }
+
+    const EMOJIS = ['😂', '🤣', '😎', '🥳', '🤩', '😜', '🐦', '💙', '✨', '🔥', '🎉', '🌈', '🍀', '👀', '🫶', '🦜', '🌟', '😺'];
+    const btn = document.getElementById('btn');
+    const jay = document.getElementById('jay');
+
+    function burst() {
+      const rect = btn.getBoundingClientRect();
+      const cx = rect.left + rect.width / 2;
+      const cy = rect.top + rect.height / 2;
+      const count = 14 + Math.floor(Math.random() * 8);
+
+      for (let i = 0; i < count; i++) {
+        const el = document.createElement('span');
+        el.className = 'emoji';
+        el.textContent = EMOJIS[Math.floor(Math.random() * EMOJIS.length)];
+
+        // веер вверх: угол от -160° до -20°
+        const angle = (-160 + Math.random() * 140) * Math.PI / 180;
+        const dist = 120 + Math.random() * 220;
+        const dur = 900 + Math.random() * 700;
+
+        el.style.setProperty('--x0', `${cx - 16}px`);
+        el.style.setProperty('--y0', `${cy - 20}px`);
+        el.style.setProperty('--x1', `${cx - 16 + Math.cos(angle) * dist}px`);
+        el.style.setProperty('--y1', `${cy - 20 + Math.sin(angle) * dist}px`);
+        el.style.setProperty('--r', `${-180 + Math.random() * 360}deg`);
+        el.style.setProperty('--s', (0.8 + Math.random() * 0.9).toFixed(2));
+        el.style.setProperty('--dur', `${dur}ms`);
+
+        el.addEventListener('animationend', () => el.remove());
+        document.body.appendChild(el);
+      }
+
+      jay.classList.remove('hop');
+      void jay.offsetWidth; // перезапуск анимации
+      jay.classList.add('hop');
+
+      tg?.HapticFeedback?.impactOccurred('medium');
+    }
+
+    btn.addEventListener('click', burst);
+  </script>
+</body>
+</html>

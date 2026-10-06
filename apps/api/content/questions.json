@@ -1,0 +1,83 @@
+[
+  {
+    "id": "guess-meme",
+    "title": "Раунд 1.",
+    "description": "Назовите персонажа",
+    "questions": [
+      {
+        "id": "sample-1",
+        "type": "guess-meme",
+        "image": "/memes/1.webp",
+        "imageAlt": "Парень с длинными волосами",
+        "text": "Как зовут данного молодого человека?",
+        "options": [
+          { "id": "a", "text": "Миша" },
+          { "id": "b", "text": "Гриша" },
+          { "id": "c", "text": "Дима" },
+          { "id": "d", "text": "Никита" }
+        ],
+        "correctId": "d"
+      },
+      {
+        "id": "sample-2",
+        "type": "guess-meme",
+        "image": "/memes/2.webp",
+        "imageAlt": "Человек с рыбой",
+        "text": "Кого поймал данный человек?",
+        "options": [
+          { "id": "a", "text": "Щука" },
+          { "id": "b", "text": "Язь" },
+          { "id": "c", "text": "Карась" },
+          { "id": "d", "text": "Бычок" }
+        ],
+        "correctId": "b"
+      },
+      {
+        "id": "sample-3",
+        "type": "guess-meme",
+        "image": "/memes/3.webp",
+        "imageAlt": "Мальчик с сигаретой",
+        "text": "Сколько должен был отдать рублей?",
+        "options": [
+          { "id": "a", "text": "1000" },
+          { "id": "b", "text": "3600" },
+          { "id": "c", "text": "5600" },
+          { "id": "d", "text": "50" }
+        ],
+        "correctId": "a"
+      }
+    ]
+  },
+  {
+    "id": "continue-phrase",
+    "title": "Раунд 2. Продолжи фразу",
+    "questions": [
+      {
+        "id": "sample-4",
+        "type": "continue-phrase",
+        "image": "/memes/4.webp",
+        "imageAlt": "Женщина в красной шапке на аллее в парке",
+        "text": "Продолжите фразу: «А я думала ...»",
+        "options": [
+          { "id": "a", "text": "Камера" },
+          { "id": "b", "text": "Сова" },
+          { "id": "c", "text": "Телефон" }
+        ],
+        "correctId": "b"
+      },
+      {
+        "id": "sample-5",
+        "type": "continue-phrase",
+        "image": "/memes/5.webp",
+        "imageAlt": "Собака идёт по заснеженному бревну, подпись «Это ..., братан» с закрытым словом",
+        "text": "Вставьте пропущенное слово",
+        "options": [
+          { "id": "a", "text": "победа" },
+          { "id": "b", "text": "счастье" },
+          { "id": "c", "text": "фиаско" }
+        ],
+        "correctId": "c"
+      }
+    ]
+  }
+]

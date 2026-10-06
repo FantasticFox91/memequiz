@@ -1,0 +1,31 @@
+generator client {
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum ParticipantSource {
+  web
+  tg
+}
+
+/// Первый (и единственный засчитанный) результат участника
+model Result {
+  id         Int               @id @default(autoincrement())
+  source     ParticipantSource
+  externalId String            @map("external_id")
+  nickname   String
+  score      Int
+  total      Int
+  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  /// Когда строка записана в Google Sheets (этап 5); null — ещё не синхронизирована
+  syncedAt   DateTime?         @map("synced_at") @db.Timestamptz(3)
+
+  @@unique([source, externalId])
+  @@index([score(sort: Desc), createdAt])
+  @@map("results")
+}

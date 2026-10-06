@@ -1,0 +1,7 @@
+# Override для проверки prod-стека на своей машине: http://localhost:8080
+# docker compose -f docker-compose.yml -f docker-compose.local.yml up --build
+services:
+  caddy:
+    command: caddy run --config /etc/caddy/Caddyfile.local --adapter caddyfile
+    ports: !override
+      - '8080:80'

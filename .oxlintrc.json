@@ -1,0 +1,12 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["typescript", "vue", "import"],
+  "env": {
+    "node": true,
+    "browser": true
+  },
+  "ignorePatterns": ["**/dist/**", "**/.output/**", "**/.nuxt/**", "apps/api/src/generated/**"],
+  "rules": {
+    "typescript/no-explicit-any": "off"
+  }
+}

@@ -1,0 +1,17 @@
+# Prod. Порт 80 на сервере занят nginx Pulse, поэтому:
+# - редирект http->https выключен,
+# - сертификат выпускается через TLS-ALPN-01 (только порт 443).
+{
+	auto_https disable_redirects
+}
+
+import app.caddy
+
+https://{$SITE_ADDRESS} {
+	tls {
+		issuer acme {
+			disable_http_challenge
+		}
+	}
+	import app
+}

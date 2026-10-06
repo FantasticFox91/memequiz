@@ -1,0 +1,14 @@
+**/node_modules
+**/dist
+**/.output
+**/.nuxt
+**/.nitro
+**/*.tsbuildinfo
+apps/api/src/generated
+.git
+.env
+.env.*
+secrets
+docs
+sandbox
+*.log

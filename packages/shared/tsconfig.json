@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2023",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "declaration": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    // tsup при сборке d.ts сам подставляет baseUrl, устаревший в TS 6
+    "ignoreDeprecations": "6.0"
+  },
+  "include": ["src"]
+}
