@@ -22,7 +22,7 @@ model Result {
   score      Int
   total      Int
   createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
-  /// Когда строка записана в Google Sheets (этап 5); null — ещё не синхронизирована
+  /// Не используется: выгрузка в Google Sheets (этап 5) отменена. Колонка оставлена, чтобы не делать миграцию
   syncedAt   DateTime?         @map("synced_at") @db.Timestamptz(3)
 
   @@unique([source, externalId])

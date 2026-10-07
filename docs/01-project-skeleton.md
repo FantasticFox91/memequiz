@@ -48,7 +48,7 @@
 - [x] `app.setGlobalPrefix('api')`.
 - [x] Глобальный `ZodValidationPipe` и хелпер `createZodDto(schema)` в `src/common/zod-validation.pipe.ts`.
 - [x] ConfigModule: `isGlobal`, `validate` через zod-схему (`src/config/env.ts`). При невалидном env приложение падает. `.env` читается из `apps/api` или из корня монорепо.
-- [x] Схема env: `NODE_ENV`, `PORT`, `DATABASE_URL`, опциональные `TELEGRAM_BOT_TOKEN`, `SHEETS_ENABLED`, `GOOGLE_SHEET_ID`, `GOOGLE_CREDENTIALS_PATH`.
+- [x] Схема env: `NODE_ENV`, `PORT`, `DATABASE_URL`, опциональный `TELEGRAM_BOT_TOKEN` (переменные Google Sheets удалены вместе с этапом 5).
 - [x] `GET /api/health`: `{ status: 'ok', db: 'up' }`. Если БД недоступна, ответ 503 с `{ status: 'error', db: 'down' }`.
 - [x] `enableShutdownHooks()`.
 

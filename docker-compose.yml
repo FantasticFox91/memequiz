@@ -16,7 +16,7 @@ services:
     restart: unless-stopped
     environment:
       SITE_ADDRESS: ${SITE_ADDRESS:?SITE_ADDRESS is required}
-    # наружу только 443: порт 80 на сервере занят nginx Pulse
+    # наружу только 443: сертификат выпускается через TLS-ALPN-01, порт 80 не нужен
     ports:
       - '443:443'
       - '443:443/udp'
@@ -39,9 +39,6 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
-      SHEETS_ENABLED: ${SHEETS_ENABLED:-false}
-      GOOGLE_SHEET_ID: ${GOOGLE_SHEET_ID:-}
-      GOOGLE_CREDENTIALS_PATH: ${GOOGLE_CREDENTIALS_PATH:-}
     depends_on:
       postgres:
         condition: service_healthy

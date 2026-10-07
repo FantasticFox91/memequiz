@@ -12,11 +12,6 @@ export const envSchema = z.object({
 
   // этап 7
   TELEGRAM_BOT_TOKEN: optionalString,
-
-  // этап 5
-  SHEETS_ENABLED: z.stringbool().default(false),
-  GOOGLE_SHEET_ID: optionalString,
-  GOOGLE_CREDENTIALS_PATH: optionalString,
 });
 
 export type Env = z.infer<typeof envSchema>;

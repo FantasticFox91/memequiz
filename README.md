@@ -37,6 +37,20 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
 
 Всё доступно на http://localhost:8080. Миграции применяются при старте контейнера api.
 
+## Prod
+
+Сервер `94.141.161.179`, сайт https://memequiz.94-141-161-179.sslip.io. Репозиторий склонирован в `/opt/memequiz`, рядом лежит `.env`.
+
+```bash
+# обновление
+cd /opt/memequiz && git pull && docker compose up -d --build
+
+# бэкап вручную (по cron — каждый день в 03:15)
+./scripts/backup.sh
+```
+
+Подробнее: [docs/00-infrastructure.md](docs/00-infrastructure.md), [docs/06-deploy-web.md](docs/06-deploy-web.md).
+
 ## Команды
 
 | Команда | Что делает |
