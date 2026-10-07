@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type LeaderboardResponse, nicknameToExternalId } from '@memequiz/shared';
+import { type LeaderboardResponse, nicknameKey } from '@memequiz/shared';
 
 const participant = useParticipantStore();
 const api = useApi();
@@ -29,8 +29,9 @@ const dateFormat = new Intl.DateTimeFormat('ru-RU', {
   minute: '2-digit',
 });
 
+// ники на сайте уникальны, поэтому себя можно узнать по нику
 const isMe = (nickname: string) =>
-  !!participant.externalId && nicknameToExternalId(nickname) === participant.externalId;
+  !!participant.nicknameKey && nicknameKey(nickname) === participant.nicknameKey;
 </script>
 
 <template>
@@ -56,6 +57,7 @@ const isMe = (nickname: string) =>
           <th class="rank">#</th>
           <th>Ник</th>
           <th class="num">Баллы</th>
+          <th class="time">Время</th>
           <th class="date">Когда</th>
         </tr>
       </thead>
@@ -64,6 +66,7 @@ const isMe = (nickname: string) =>
           <td class="rank">{{ entry.rank }}</td>
           <td class="nick">{{ entry.nickname }}</td>
           <td class="num">{{ entry.score }}/{{ entry.total }}</td>
+          <td class="time">{{ formatDuration(entry.durationMs) }}</td>
           <td class="date">{{ dateFormat.format(new Date(entry.createdAt)) }}</td>
         </tr>
       </tbody>
@@ -118,11 +121,25 @@ td {
   font-weight: 600;
 }
 
+/* при равных баллах место решает время */
+.time {
+  width: 60px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .date {
   width: 104px;
   text-align: right;
   font-size: 13px;
   color: var(--hint);
+}
+
+/* узкий экран: дата нужна меньше всего */
+@media (max-width: 400px) {
+  .date {
+    display: none;
+  }
 }
 
 tr.me td {

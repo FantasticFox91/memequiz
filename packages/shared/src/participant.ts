@@ -10,8 +10,8 @@ export function normalizeNickname(raw: string): string {
   return raw.normalize('NFKC').trim().replace(/\s+/g, ' ');
 }
 
-// ключ участника: "  Вася  " и "вася" — один человек
-export function nicknameToExternalId(raw: string): string {
+// ключ для сравнения ников: "  Вася  " и "вася" — один и тот же ник
+export function nicknameKey(raw: string): string {
   return normalizeNickname(raw).toLowerCase();
 }
 
@@ -31,6 +31,24 @@ export function suggestNickname(raw: string): string {
   const cleaned = normalizeNickname(raw.normalize('NFKC').replace(/[^a-zA-Zа-яА-ЯёЁ0-9 _-]/g, ''));
   const trimmed = cleaned.slice(0, NICKNAME_MAX).trim();
   return trimmed.length >= NICKNAME_MIN ? trimmed : '';
+}
+
+// поля Telegram user, из которых строится ник
+export type TelegramNameSource = {
+  id: number;
+  first_name?: string;
+  last_name?: string;
+  username?: string;
+};
+
+// ник участника из Telegram: username, иначе имя, иначе tg<id>. Изменить его нельзя,
+// поэтому одна функция и для сервера, и для показа на фронте
+export function telegramNickname(user: TelegramNameSource): string {
+  return (
+    suggestNickname(user.username ?? '') ||
+    suggestNickname([user.first_name, user.last_name].filter(Boolean).join(' ')) ||
+    `tg${user.id}`
+  );
 }
 
 export const participantSchema = z.object({

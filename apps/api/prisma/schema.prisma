@@ -13,19 +13,35 @@ enum ParticipantSource {
   tg
 }
 
-/// Первый (и единственный засчитанный) результат участника
+/// Первый (и единственный засчитанный) результат участника.
+/// externalId: web — id из куки mq_pid, tg — Telegram user.id
 model Result {
-  id         Int               @id @default(autoincrement())
-  source     ParticipantSource
-  externalId String            @map("external_id")
-  nickname   String
-  score      Int
-  total      Int
-  createdAt  DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  id          Int               @id @default(autoincrement())
+  source      ParticipantSource
+  externalId  String            @map("external_id")
+  nickname    String
+  /// nicknameKey() из shared: для проверки, что ник на сайте не занят (lower() в Postgres зависит от локали)
+  nicknameKey String            @map("nickname_key")
+  score       Int
+  total       Int
+  /// Время прохождения по часам сервера: от первого POST /quiz/start до submit. null — старт не записан
+  durationMs  Int?              @map("duration_ms")
+  createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   /// Не используется: выгрузка в Google Sheets (этап 5) отменена. Колонка оставлена, чтобы не делать миграцию
-  syncedAt   DateTime?         @map("synced_at") @db.Timestamptz(3)
+  syncedAt    DateTime?         @map("synced_at") @db.Timestamptz(3)
 
   @@unique([source, externalId])
-  @@index([score(sort: Desc), createdAt])
+  @@index([score(sort: Desc), durationMs, createdAt])
+  @@index([nicknameKey])
   @@map("results")
+}
+
+/// Когда участник впервые открыл викторину. Пишется один раз: перезапуск не сбрасывает таймер
+model QuizStart {
+  source     ParticipantSource
+  externalId String            @map("external_id")
+  startedAt  DateTime          @default(now()) @map("started_at") @db.Timestamptz(3)
+
+  @@id([source, externalId])
+  @@map("quiz_starts")
 }

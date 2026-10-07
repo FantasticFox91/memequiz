@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { APP_GUARD } from '@nestjs/core';
 import { validateEnv } from './config/env';
 import { HealthModule } from './health/health.module';
+import { TelegramAuthGuard } from './participant/telegram-auth.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { QuizModule } from './quiz/quiz.module';
 
@@ -17,5 +19,6 @@ import { QuizModule } from './quiz/quiz.module';
     HealthModule,
     QuizModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: TelegramAuthGuard }],
 })
 export class AppModule {}

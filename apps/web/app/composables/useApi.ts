@@ -1,7 +1,12 @@
 /**
- * Единая точка запросов к api. На этапе 7 сюда добавится заголовок с Telegram initData.
+ * Единая точка запросов к api. В Telegram к каждому запросу добавляется initData:
+ * по нему сервер проверяет подпись и узнаёт участника (Telegram user.id).
  */
 export function useApi() {
   const { apiBase } = useRuntimeConfig().public;
-  return $fetch.create({ baseURL: apiBase });
+  const { initData } = useTelegram();
+  return $fetch.create({
+    baseURL: apiBase,
+    headers: initData ? { Authorization: `tma ${initData}` } : undefined,
+  });
 }

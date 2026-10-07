@@ -1,7 +1,11 @@
-# Ручная проверка этапа 3 (VS Code REST Client / JetBrains HTTP Client).
+# Ручная проверка api (VS Code REST Client / JetBrains HTTP Client).
 # Перед прогоном: pnpm db:up, pnpm dev. Для чистого прогона очистить таблицу:
 #   docker exec memequiz-dev-postgres-1 psql -U <POSTGRES_USER> -d <POSTGRES_DB> -c "TRUNCATE results"
 # Правильные ответы тестового questions.json: sample-1=d, sample-2=b, sample-3=a, sample-4=b, sample-5=c
+#
+# Участник на сайте — кука mq_pid (выдаётся api при первом запросе). REST Client запоминает куки,
+# так что запросы без "@no-cookie-jar" идут от одного и того же «браузера».
+# Telegram: заголовок печатает TELEGRAM_BOT_TOKEN=... node scripts/tg-init-data.mjs <user_id>
 
 @api = http://localhost:3000/api
 
@@ -11,7 +15,7 @@ GET {{api}}/health
 ### Вопросы: в ответе не должно быть correctId, варианты перемешаны
 GET {{api}}/quiz
 
-### Статус до прохождения → { completed: false }
+### Статус до прохождения → { completed: false }, в ответе Set-Cookie: mq_pid=...
 GET {{api}}/me/status?nickname=Вася
 
 ### Первая отправка, 5/5 → isFirst: true, score: 5
@@ -29,12 +33,12 @@ Content-Type: application/json
   ]
 }
 
-### Повторная отправка тем же ником в другом регистре, 0/5 → isFirst: false, score: 5 (первый)
+### Повтор «для себя» тем же браузером, даже под другим ником, 0/5 → isFirst: false, result.score: 5, attempt.score: 0
 POST {{api}}/quiz/submit
 Content-Type: application/json
 
 {
-  "nickname": "вася",
+  "nickname": "Другой",
   "answers": [
     { "questionId": "sample-1", "optionId": "a" },
     { "questionId": "sample-2", "optionId": "a" },
@@ -44,10 +48,15 @@ Content-Type: application/json
   ]
 }
 
-### Статус после прохождения → { completed: true, result: { score: 5, ... } }
+### Статус после прохождения (ник не нужен) → { completed: true, result: { nickname: "Вася", score: 5 } }
+GET {{api}}/me/status
+
+### Новый браузер, ник «ВАСЯ» уже занят → 409
+# @no-cookie-jar
 GET {{api}}/me/status?nickname=ВАСЯ
 
-### Второй участник с тем же счётом позже → в лидерборде ниже Васи
+### Новый браузер, тот же счёт позже → в лидерборде ниже Васи
+# @no-cookie-jar
 POST {{api}}/quiz/submit
 Content-Type: application/json
 
@@ -62,7 +71,8 @@ Content-Type: application/json
   ]
 }
 
-### Третий участник, 2/5
+### Новый браузер, 2/5
+# @no-cookie-jar
 POST {{api}}/quiz/submit
 Content-Type: application/json
 
@@ -83,30 +93,55 @@ GET {{api}}/leaderboard
 ### Лидерборд с лимитом
 GET {{api}}/leaderboard?limit=2
 
-# ---------- Ошибки: всё ниже должно вернуть 400 ----------
+# ---------- Ошибки ----------
 
-### Ник короче 2 символов
+### Ник занят: новый браузер с ником «петя» → 409
+# @no-cookie-jar
+POST {{api}}/quiz/submit
+Content-Type: application/json
+
+{
+  "nickname": "петя",
+  "answers": [
+    { "questionId": "sample-1", "optionId": "d" },
+    { "questionId": "sample-2", "optionId": "b" },
+    { "questionId": "sample-3", "optionId": "a" },
+    { "questionId": "sample-4", "optionId": "b" },
+    { "questionId": "sample-5", "optionId": "c" }
+  ]
+}
+
+### Без ника на сайте → 400
+# @no-cookie-jar
+POST {{api}}/quiz/submit
+Content-Type: application/json
+
+{ "answers": [{ "questionId": "sample-1", "optionId": "a" }] }
+
+### Ник короче 2 символов → 400
 POST {{api}}/quiz/submit
 Content-Type: application/json
 
 { "nickname": " a ", "answers": [{ "questionId": "sample-1", "optionId": "a" }] }
 
-### Ник из пробелов
+### Ник из пробелов → 400
 GET {{api}}/me/status?nickname=%20%20%20
 
-### Недопустимые символы в нике
+### Недопустимые символы в нике → 400
 POST {{api}}/quiz/submit
 Content-Type: application/json
 
 { "nickname": "<script>", "answers": [{ "questionId": "sample-1", "optionId": "a" }] }
 
-### Неверное количество ответов
+### Неверное количество ответов → 400
+# @no-cookie-jar
 POST {{api}}/quiz/submit
 Content-Type: application/json
 
 { "nickname": "Тест", "answers": [{ "questionId": "sample-1", "optionId": "a" }] }
 
-### Дубль вопроса, неизвестный вопрос, чужой вариант
+### Дубль вопроса, неизвестный вопрос, чужой вариант → 400
+# @no-cookie-jar
 POST {{api}}/quiz/submit
 Content-Type: application/json
 
@@ -121,5 +156,5 @@ Content-Type: application/json
   ]
 }
 
-### limit вне диапазона
+### limit вне диапазона → 400
 GET {{api}}/leaderboard?limit=1000

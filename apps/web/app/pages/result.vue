@@ -6,6 +6,11 @@ const quiz = useQuizStore();
 const loading = ref(false);
 const error = ref<string | null>(null);
 
+const usesMainButton = useTelegramMainButton(
+  () => (quiz.result && !loading.value ? { text: 'Лидерборд' } : null),
+  () => void navigateTo('/leaderboard'),
+);
+
 // после перезагрузки результата в store нет: берём его из статуса
 async function loadResult() {
   loading.value = true;
@@ -22,6 +27,21 @@ async function loadResult() {
 
 onMounted(() => {
   if (!quiz.result) void loadResult();
+});
+
+async function retry() {
+  quiz.startPractice();
+  await navigateTo('/quiz');
+}
+
+// крупно показываем только что пройденную попытку; засчитанный результат — рядом
+const shown = computed(() => quiz.attempt ?? quiz.result);
+
+const countedText = computed(() => {
+  const r = quiz.result;
+  if (!r) return '';
+  const time = r.durationMs != null ? `, за ${formatDuration(r.durationMs)}` : '';
+  return `${r.score} из ${r.total}${time}`;
 });
 
 function verdict(score: number, total: number): string {
@@ -44,18 +64,24 @@ function verdict(score: number, total: number): string {
       <button class="btn" type="button" @click="loadResult">Повторить</button>
     </div>
 
-    <template v-else-if="quiz.result">
-      <p class="hint">{{ quiz.result.nickname }}, твой результат</p>
-      <p class="score">
-        {{ quiz.result.score }} <span class="score-total">из {{ quiz.result.total }}</span>
+    <template v-else-if="quiz.result && shown">
+      <p class="hint">
+        {{ quiz.result.nickname }}, {{ quiz.attempt ? 'результат этой попытки' : 'твой результат' }}
       </p>
-      <h1>{{ verdict(quiz.result.score, quiz.result.total) }}</h1>
+      <p class="score">
+        {{ shown.score }} <span class="score-total">из {{ shown.total }}</span>
+      </p>
+      <p v-if="shown.durationMs != null" class="time">за {{ formatDuration(shown.durationMs) }}</p>
+      <h1>{{ verdict(shown.score, shown.total) }}</h1>
 
       <p v-if="quiz.isFirst === false" class="note">
-        Ты уже проходил викторину. Засчитан твой первый результат: {{ quiz.result.score }}.
+        В зачёт и лидерборд идёт первая попытка: {{ countedText }}.
       </p>
 
-      <NuxtLink to="/leaderboard" class="btn">Лидерборд</NuxtLink>
+      <NuxtLink v-if="!usesMainButton" to="/leaderboard" class="btn">Лидерборд</NuxtLink>
+      <button class="btn btn-secondary" type="button" @click="retry">
+        Пройти ещё раз для себя
+      </button>
     </template>
   </section>
 </template>
@@ -89,6 +115,11 @@ function verdict(score: number, total: number): string {
   line-height: 1.1;
 }
 
+.time {
+  margin: 0;
+  color: var(--hint);
+}
+
 .score-total {
   font-size: 24px;
   font-weight: 600;
@@ -104,5 +135,9 @@ function verdict(score: number, total: number): string {
 
 .btn {
   margin-top: 16px;
+}
+
+.btn + .btn {
+  margin-top: 0;
 }
 </style>

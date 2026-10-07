@@ -11,6 +11,9 @@ export default defineNuxtConfig({
       meta: [
         { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' },
       ],
+      // SDK Mini App: синхронно в head, до приложения (так требует Telegram).
+      // Вне Telegram ничего не делает; если не загрузится, api-авторизация всё равно работает
+      script: [{ src: 'https://telegram.org/js/telegram-web-app.js' }],
     },
   },
 

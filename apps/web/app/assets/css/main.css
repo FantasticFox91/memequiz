@@ -1,4 +1,4 @@
-/* Цвета через переменные: на этапе 7 их подменят themeParams Telegram */
+/* Цвета через переменные; в Telegram их подменяют themeParams */
 :root {
   --bg: #ffffff;
   --text: #111111;
@@ -18,6 +18,21 @@
     --secondary-bg: #232e3c;
     --accent: #5288c1;
   }
+}
+
+/*
+ * В Telegram (data-tg ставит plugins/telegram.client.ts) цвета берутся из темы клиента.
+ * --tg-theme-* выставляет и обновляет при смене темы telegram-web-app.js.
+ * Запасные значения — на случай старого клиента без части параметров.
+ */
+html[data-tg] {
+  --bg: var(--tg-theme-bg-color, #ffffff);
+  --text: var(--tg-theme-text-color, #111111);
+  --hint: var(--tg-theme-hint-color, #888888);
+  --secondary-bg: var(--tg-theme-secondary-bg-color, color-mix(in srgb, var(--text) 6%, var(--bg)));
+  --accent: var(--tg-theme-button-color, #2481cc);
+  --accent-text: var(--tg-theme-button-text-color, #ffffff);
+  --danger: var(--tg-theme-destructive-text-color, #d93025);
 }
 
 *,

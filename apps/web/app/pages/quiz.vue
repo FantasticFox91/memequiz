@@ -2,17 +2,50 @@
 definePageMeta({ middleware: 'nickname' });
 
 const quiz = useQuizStore();
+const telegram = useTelegram();
 
 const imageLoaded = ref(false);
 
 onMounted(async () => {
-  // уже прошёл (например, вернулся «назад» после результата)
-  if (quiz.result) {
+  // уже прошёл (например, вернулся «назад» после результата); повтор «для себя» — только с экрана результата
+  if (quiz.result && !quiz.practice) {
     await navigateTo('/result', { replace: true });
     return;
   }
+  // свайп вниз в Telegram закрыл бы Mini App посреди викторины
+  if (telegram.supports('6.2')) telegram.webApp?.enableClosingConfirmation();
   if (!quiz.rounds) await quiz.load();
 });
+
+onBeforeUnmount(() => {
+  if (telegram.supports('6.2')) telegram.webApp?.disableClosingConfirmation();
+});
+
+function select(optionId: string) {
+  if (optionId !== quiz.selectedOptionId && telegram.supports('6.1')) {
+    telegram.webApp?.HapticFeedback.selectionChanged();
+  }
+  quiz.select(optionId);
+}
+
+// одна кнопка на все состояния: начать раунд → далее → завершить
+const usesMainButton = useTelegramMainButton(
+  () => {
+    if (!quiz.current || quiz.loading || quiz.loadError) return null;
+    if (quiz.showIntro) return { text: 'Начать раунд' };
+    if (!quiz.isLast) return { text: 'Далее', enabled: !!quiz.selectedOptionId };
+    return {
+      text: quiz.submitError ? 'Повторить' : 'Завершить',
+      enabled: !!quiz.selectedOptionId && !quiz.submitting,
+      loading: quiz.submitting,
+    };
+  },
+  () => {
+    if (quiz.showIntro) quiz.startRound();
+    else if (!quiz.isLast) quiz.next();
+    else if (quiz.selectedOptionId) void finish();
+  },
+);
 
 // новая картинка: показать индикатор и заранее подгрузить следующую
 watch(
@@ -46,6 +79,8 @@ async function finish() {
     </div>
 
     <template v-else-if="quiz.current">
+      <p v-if="quiz.practice" class="practice-note">Попытка для себя, в зачёт не идёт</p>
+
       <div class="progress">
         <div class="progress-meta">
           <span>{{ quiz.current.round.title }}</span>
@@ -68,7 +103,9 @@ async function finish() {
         <p v-if="quiz.current.round.description" class="intro-description">
           {{ quiz.current.round.description }}
         </p>
-        <button class="btn" type="button" @click="quiz.startRound()">Начать раунд</button>
+        <button v-if="!usesMainButton" class="btn" type="button" @click="quiz.startRound()">
+          Начать раунд
+        </button>
       </div>
 
       <template v-else>
@@ -95,7 +132,7 @@ async function finish() {
             :class="{ selected: option.id === quiz.selectedOptionId }"
             :aria-pressed="option.id === quiz.selectedOptionId"
             :disabled="quiz.submitting"
-            @click="quiz.select(option.id)"
+            @click="select(option.id)"
           >
             {{ option.text }}
           </button>
@@ -103,25 +140,28 @@ async function finish() {
 
         <p v-if="quiz.submitError" class="error-text">{{ quiz.submitError }}</p>
 
-        <button
-          v-if="!quiz.isLast"
-          class="btn"
-          type="button"
-          :disabled="!quiz.selectedOptionId"
-          @click="quiz.next()"
-        >
-          Далее
-        </button>
-        <button
-          v-else
-          class="btn"
-          type="button"
-          :disabled="!quiz.selectedOptionId || quiz.submitting"
-          @click="finish"
-        >
-          <span v-if="quiz.submitting" class="spinner" aria-hidden="true" />
-          {{ quiz.submitError ? 'Повторить' : 'Завершить' }}
-        </button>
+        <!-- в Telegram вместо них MainButton -->
+        <template v-if="!usesMainButton">
+          <button
+            v-if="!quiz.isLast"
+            class="btn"
+            type="button"
+            :disabled="!quiz.selectedOptionId"
+            @click="quiz.next()"
+          >
+            Далее
+          </button>
+          <button
+            v-else
+            class="btn"
+            type="button"
+            :disabled="!quiz.selectedOptionId || quiz.submitting"
+            @click="finish"
+          >
+            <span v-if="quiz.submitting" class="spinner" aria-hidden="true" />
+            {{ quiz.submitError ? 'Повторить' : 'Завершить' }}
+          </button>
+        </template>
       </template>
     </template>
   </section>
@@ -140,6 +180,13 @@ async function finish() {
   align-items: center;
   gap: 12px;
   padding: 48px 0;
+  text-align: center;
+}
+
+.practice-note {
+  margin: 0;
+  font-size: 14px;
+  color: var(--hint);
   text-align: center;
 }
 

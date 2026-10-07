@@ -12,27 +12,41 @@ export const answerSchema = z.object({
   optionId: z.string().min(1),
 });
 
+// nickname: обязателен на сайте; в Telegram игнорируется, ник берётся из профиля
 export const submitRequestSchema = z.object({
-  nickname: nicknameSchema,
+  nickname: nicknameSchema.optional(),
   answers: z.array(answerSchema).min(1),
 });
 
+// durationMs: время прохождения по часам сервера; null — у старых результатов
 export const quizResultSchema = z.object({
   nickname: z.string(),
   score: z.int(),
   total: z.int(),
+  durationMs: z.int().nullable(),
   createdAt: z.iso.datetime(),
 });
 
-// isFirst: false — участник уже проходил, в result его первый результат
+export const attemptScoreSchema = z.object({
+  score: z.int(),
+  total: z.int(),
+});
+
+// result — засчитанный (первый) результат; attempt — баллы этой попытки.
+// isFirst: false — участник уже проходил, попытка «для себя» и в зачёт не идёт
 export const submitResponseSchema = z.object({
   result: quizResultSchema,
+  attempt: attemptScoreSchema,
   isFirst: z.boolean(),
 });
 
-// GET /api/me/status?nickname=...
+// POST /api/quiz/start — отметка начала (204). Время засчитанной попытки считается от первой отметки
+
+// GET /api/me/status[?nickname=...]
+// участник — кука (сайт) или initData (Telegram). nickname на сайте — проверить, не занят ли он:
+// если не проходил и ник занят другим, ответ 409
 export const statusQuerySchema = z.object({
-  nickname: nicknameSchema,
+  nickname: nicknameSchema.optional(),
 });
 
 export const statusResponseSchema = z.discriminatedUnion('completed', [
@@ -53,7 +67,8 @@ export const leaderboardQuerySchema = z.object({
     .default(LEADERBOARD_DEFAULT_LIMIT),
 });
 
-// rank: место по порядку score DESC, createdAt ASC; при равенстве баллов выше тот, кто раньше
+// rank: место по порядку score DESC, durationMs ASC (null в конце), createdAt ASC:
+// при равенстве баллов выше тот, кто быстрее, затем тот, кто раньше
 export const leaderboardEntrySchema = quizResultSchema.extend({
   rank: z.int().positive(),
 });
@@ -64,6 +79,7 @@ export type QuizResponse = z.infer<typeof quizResponseSchema>;
 export type Answer = z.infer<typeof answerSchema>;
 export type SubmitRequest = z.infer<typeof submitRequestSchema>;
 export type QuizResult = z.infer<typeof quizResultSchema>;
+export type AttemptScore = z.infer<typeof attemptScoreSchema>;
 export type SubmitResponse = z.infer<typeof submitResponseSchema>;
 export type StatusQuery = z.infer<typeof statusQuerySchema>;
 export type StatusResponse = z.infer<typeof statusResponseSchema>;

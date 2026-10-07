@@ -1,26 +1,14 @@
 <script setup lang="ts">
-import {
-  NICKNAME_MAX,
-  nicknameSchema,
-  nicknameToExternalId,
-  suggestNickname,
-} from '@memequiz/shared';
+import { NICKNAME_MAX, nicknameKey, nicknameSchema, telegramNickname } from '@memequiz/shared';
 
 const participant = useParticipantStore();
 const quiz = useQuizStore();
 const telegram = useTelegram();
 
-// в Telegram предлагаем username, иначе имя; сохранённый ник важнее
-function telegramNickname(): string {
-  const user = telegram.user;
-  if (!user) return '';
-  return (
-    suggestNickname(user.username ?? '') ||
-    suggestNickname([user.first_name, user.last_name].filter(Boolean).join(' '))
-  );
-}
+// в Telegram ник из профиля и не меняется (тот же, что посчитает сервер); на сайте — свой
+const fixedNickname = telegram.user ? telegramNickname(telegram.user) : null;
 
-const input = ref(participant.nickname || telegramNickname());
+const input = ref(fixedNickname ?? participant.nickname);
 const touched = ref(!!input.value);
 const starting = ref(false);
 const startError = ref<string | null>(null);
@@ -31,24 +19,55 @@ const validationError = computed(() =>
   parsed.value.success ? null : (parsed.value.error.issues[0]?.message ?? 'Неверный ник'),
 );
 
+// Участник известен сразу (кука или user.id): если уже проходил — ведём на результат, не спрашивая ник.
+// Один раз за запуск: при возврате на главную вручную не перебрасываем
+const statusChecked = useState('status-checked', () => false);
+const checkingStatus = ref(false);
+
+onMounted(async () => {
+  if (statusChecked.value) return;
+  statusChecked.value = true;
+  checkingStatus.value = true;
+  try {
+    const completed = await quiz.fetchStatus();
+    if (completed && quiz.result) {
+      participant.setNickname(quiz.result.nickname);
+      await navigateTo('/result', { replace: true });
+    }
+  } catch {
+    // не страшно: проверим ещё раз при «Начать»
+  } finally {
+    checkingStatus.value = false;
+  }
+});
+
+const usesMainButton = useTelegramMainButton(
+  () =>
+    checkingStatus.value
+      ? null
+      : { text: 'Начать', enabled: !validationError.value, loading: starting.value },
+  () => void start(),
+);
+
 async function start() {
   touched.value = true;
   if (!parsed.value.success || starting.value) return;
 
   const nickname = parsed.value.data;
-  // другой участник: чужой результат и прогресс не показываем
-  if (nicknameToExternalId(nickname) !== participant.externalId) {
+  // другой ник: прогресс и результат с прошлого ника не показываем, статус спросим заново
+  if (nicknameKey(nickname) !== participant.nicknameKey) {
     quiz.resetProgress();
-    quiz.result = null;
-    quiz.isFirst = null;
+    quiz.clearResult();
     quiz.rounds = null;
   }
-  participant.setNickname(nickname);
 
   starting.value = true;
   startError.value = null;
   try {
-    const completed = await quiz.fetchStatus();
+    // на сайте заодно проверяется, что ник не занят (409 с текстом ошибки)
+    const completed = await quiz.fetchStatus(fixedNickname ? undefined : nickname);
+    // уже проходил: в зачёте ник первой попытки
+    participant.setNickname(completed && quiz.result ? quiz.result.nickname : nickname);
     await navigateTo(completed ? '/result' : '/quiz');
   } catch (e) {
     startError.value = apiErrorMessage(e);
@@ -61,11 +80,20 @@ async function start() {
 <template>
   <section class="start">
     <h1>Насколько хорошо ты знаешь мемы?</h1>
-    <p class="hint">Несколько раундов, засчитывается только первая попытка.</p>
+    <p class="hint">
+      Несколько раундов. В зачёт идёт только первая попытка, потом можно проходить для себя.
+    </p>
 
-    <form class="form" novalidate @submit.prevent="start">
+    <div v-if="checkingStatus" class="checking">
+      <span class="spinner" aria-label="Загрузка" />
+    </div>
+
+    <form v-else class="form" novalidate @submit.prevent="start">
       <label for="nickname" class="label">Твой ник</label>
+      <!-- в Telegram ник из профиля: только показываем -->
+      <p v-if="fixedNickname" id="nickname" class="input fixed">{{ fixedNickname }}</p>
       <input
+        v-else
         id="nickname"
         v-model="input"
         class="input"
@@ -81,7 +109,13 @@ async function start() {
       <p v-if="touched && validationError" class="error-text">{{ validationError }}</p>
       <p v-else-if="startError" class="error-text">{{ startError }}</p>
 
-      <button class="btn" type="submit" :disabled="!!validationError || starting">
+      <!-- в Telegram вместо неё MainButton; Enter в поле по-прежнему отправляет форму -->
+      <button
+        v-if="!usesMainButton"
+        class="btn"
+        type="submit"
+        :disabled="!!validationError || starting"
+      >
         <span v-if="starting" class="spinner" aria-hidden="true" />
         Начать
       </button>
@@ -94,6 +128,12 @@ async function start() {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.checking {
+  display: flex;
+  justify-content: center;
+  padding: 32px 0;
 }
 
 .form {
@@ -130,6 +170,13 @@ async function start() {
 
 .input.invalid {
   border-color: var(--danger);
+}
+
+.input.fixed {
+  display: flex;
+  align-items: center;
+  margin: 0;
+  font-weight: 600;
 }
 
 .btn {

@@ -1,9 +1,10 @@
 /**
- * Telegram Mini App без SDK: Telegram передаёт initData в hash стартового URL (#tgWebAppData=...).
+ * Telegram Mini App. initData читаем сами из hash стартового URL (#tgWebAppData=...), а не из SDK:
+ * так api-авторизация работает, даже если telegram-web-app.js не загрузился.
  * Hash теряется при навигации, поэтому initData запоминается в sessionStorage.
  *
- * Сейчас используется только для предзаполнения ника.
- * user здесь НЕ проверен; на сервере ему доверять нельзя (проверка подписи — этап 7).
+ * user здесь НЕ проверен и нужен только для UI; сервер проверяет подпись initData сам.
+ * webApp — SDK (кнопки, тема, haptics); null вне Telegram или если скрипт не загрузился.
  */
 
 export type TelegramUser = {
@@ -48,10 +49,16 @@ function parseUser(initData: string | null): TelegramUser | null {
 export function useTelegram() {
   const initData = readInitData();
   const user = parseUser(initData);
+  const webApp = (initData && window.Telegram?.WebApp) || null;
+
+  // старые клиенты (Desktop, Web) могут не знать новых методов
+  const supports = (version: string) => !!webApp?.isVersionAtLeast(version);
 
   return {
     isTelegram: !!initData,
     initData,
     user,
+    webApp,
+    supports,
   };
 }
