@@ -14,14 +14,11 @@ DIR=backups
 mkdir -p "$DIR"
 chmod 700 "$DIR"
 
-set -a
-. ./.env
-set +a
-
 FILE="$DIR/memequiz-$(date +%Y-%m-%d_%H-%M-%S).dump"
 
-# пишем во временный файл, чтобы оборванный дамп не выглядел как готовый
-docker compose exec -T postgres pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc > "$FILE.tmp"
+# пишем во временный файл, чтобы оборванный дамп не выглядел как готовый.
+# пользователя и БД берём из env контейнера postgres, .env не парсим
+docker compose exec -T postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc' > "$FILE.tmp"
 mv "$FILE.tmp" "$FILE"
 chmod 600 "$FILE"
 
