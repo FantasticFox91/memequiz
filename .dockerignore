@@ -9,6 +9,7 @@ apps/api/src/generated
 .env
 .env.*
 secrets
+backups
 docs
 sandbox
 *.log

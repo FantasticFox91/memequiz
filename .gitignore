@@ -17,6 +17,7 @@ apps/api/src/generated/
 .env.*
 !.env.example
 secrets/
+backups/
 
 # исходники мемов до оптимизации (в репо только webp из apps/web/public/memes)
 content/memes-src/
