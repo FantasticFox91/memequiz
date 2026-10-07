@@ -29,6 +29,8 @@ function readInitData(): string | null {
   } catch {
     // нет sessionStorage: работаем с тем, что было в hash
   }
+  // hash мог потеряться (перезагрузка, редирект клиента): SDK хранит initData у себя
+  if (!initData) initData = window.Telegram?.WebApp?.initData || null;
 
   cachedInitData = initData || null;
   return cachedInitData;
