@@ -27,40 +27,40 @@
 - [ ] По желанию: скрипт `deploy.sh` или job в GitHub Actions, который делает выкладку по SSH.
 
 ### Caddyfile
-- [ ] Блок сайта `<hostname>`.
-- [ ] `handle /api/*` → `reverse_proxy api:3000`. Префикс не срезать, Nest ожидает `/api`.
-- [ ] `handle` для статики: `root * /srv`, `try_files {path} /index.html` (SPA-fallback), `file_server`.
-- [ ] Заголовки кэширования:
+- [x] Блок сайта `<hostname>` (`deploy/caddy/Caddyfile`, общие маршруты в `app.caddy`).
+- [x] `handle /api/*` → `reverse_proxy api:3000`. Префикс не срезать, Nest ожидает `/api`.
+- [x] `handle` для статики: `root * /srv`, `try_files {path} /200.html` (SPA-fallback), `file_server`.
+- [x] Заголовки кэширования:
   - `/_nuxt/*` (файлы с хэшем): `Cache-Control: public, max-age=31536000, immutable`;
   - `index.html` и SPA-fallback: `Cache-Control: no-cache`;
-  - `/memes/*`: умеренный кэш, например `max-age=86400`.
-- [ ] `encode zstd gzip`.
-- [ ] Базовые security-заголовки: `X-Content-Type-Options: nosniff`, `Referrer-Policy`. `X-Frame-Options` не ставить: он помешает Telegram Web.
+  - `/memes/*`: `max-age=3600` (имена без хэша, замена картинки доезжает за час).
+- [x] `encode zstd gzip`.
+- [x] Базовые security-заголовки: `X-Content-Type-Options: nosniff`, `Referrer-Policy`. `X-Frame-Options` не ставить: он помешает Telegram Web.
 
 ### Бэкапы
 - [x] `scripts/backup.sh`: `pg_dump -Fc` в `/opt/memequiz/backups/` с датой в имени. Восстановление описано в комментарии в начале скрипта.
 - [x] Cron на хосте, раз в сутки:
   `15 3 * * * /opt/memequiz/scripts/backup.sh >> /opt/memequiz/backups/backup.log 2>&1`
 - [x] Ротация: хранятся последние 14 дампов (`KEEP`).
-- [ ] Копировать дампы за пределы сервера (хотя бы вручную `scp root@94.141.161.179:/opt/memequiz/backups/*.dump .`). Google Sheets как копии больше нет, так что это единственная защита от потери сервера.
+- [ ] Копировать дампы за пределы сервера: `pnpm backup:pull` локально (`scripts/pull-backups.sh`, качает только новые дампы в `backups/`). Запускать хотя бы раз в неделю. Google Sheets как копии больше нет, так что это единственная защита от потери сервера.
 - [x] Один раз проверить восстановление (`pg_restore` в тестовую БД).
 
 ### Логи
-- [ ] В `docker-compose.yml` для всех сервисов: `logging: driver json-file, options: max-size: 10m, max-file: 3` (или глобально в `/etc/docker/daemon.json`).
-- [ ] Nest логирует в stdout. Структурированные JSON-логи (pino) по желанию.
+- [x] В `docker-compose.yml` для всех сервисов: `logging: driver json-file, options: max-size: 10m, max-file: 3` (или глобально в `/etc/docker/daemon.json`).
+- [x] Nest логирует в stdout. Структурированные JSON-логи (pino) по желанию.
 
 ### Smoke-тест
-- [ ] `curl https://<hostname>/api/health` возвращает `ok`.
+- [x] `curl https://<hostname>/api/health` возвращает `ok`.
 - [ ] Пройти викторину с телефона через мобильный интернет (не Wi-Fi).
 - [ ] Проверить, что результат появился в лидерборде.
 - [ ] Проверить, что повторный вход с тем же ником ведёт на результат.
-- [ ] Проверить заголовки кэша в DevTools (`/_nuxt/*` immutable, `index.html` no-cache).
+- [x] Проверить заголовки кэша в DevTools (`/_nuxt/*` immutable, `index.html` no-cache).
 
 ## Готово, когда
 
 - [ ] Ссылку можно отправить друзьям, и всё работает.
-- [ ] Бэкап создаётся по cron и восстанавливается.
-- [ ] Логи не растут бесконечно.
+- [x] Бэкап создаётся по cron и восстанавливается.
+- [x] Логи не растут бесконечно.
 
 ## Артефакты
 

@@ -33,7 +33,7 @@
 - [x] Оставить точку расширения под Telegram (этап 7): позже добавится ветка с `initData` (`resolveParticipant()` в `src/participant/participant.resolver.ts`).
 
 ### Эндпоинты
-- [x] `GET /api/quiz`: список `PublicRound` (через `toPublicRound()`), внутри вопросы без `correctId`. Порядок раундов и вопросов как в файле. Порядок вариантов перемешивается (Fisher–Yates). Ответы идентифицируются по `optionId`, поэтому перемешивание безопасно.
+- [x] `GET /api/quiz`: список `PublicRound` (через `toPublicRound()`), внутри вопросы без `correctId`. Порядок раундов как в файле. Вопросы внутри раунда и варианты перемешиваются на каждый запрос (Fisher–Yates). Ответы идентифицируются по `questionId`/`optionId`, поэтому перемешивание безопасно. Фронт сохраняет порядок вопросов своей попытки в прогрессе, чтобы после перезагрузки он не менялся.
 - [x] `GET /api/me/status?nickname=...`: `{ completed: false }` или `{ completed: true, result: { score, total, createdAt, nickname } }`.
 - [x] `POST /api/quiz/submit`: тело `{ nickname, answers: [{ questionId, optionId }] }`.
   - [x] Баллы считаются только на сервере, по `questions.json`.

@@ -2,6 +2,13 @@
 (app) {
 	encode zstd gzip
 
+	# X-Frame-Options не ставим: Telegram Web открывает Mini App в iframe
+	header {
+		X-Content-Type-Options nosniff
+		Referrer-Policy strict-origin-when-cross-origin
+		-Server
+	}
+
 	handle /api/* {
 		reverse_proxy api:3000
 	}
@@ -12,7 +19,10 @@
 		# файлы с хэшем в имени кэшируем навсегда, остальное (index.html и т.п.) всегда перепроверяем
 		@hashed path /_nuxt/*
 		header @hashed Cache-Control "public, max-age=31536000, immutable"
-		@other not path /_nuxt/*
+		# мемы без хэша в имени: час, чтобы замена картинки под тем же именем доезжала быстро
+		@memes path /memes/*
+		header @memes Cache-Control "public, max-age=3600"
+		@other not path /_nuxt/* /memes/*
 		header @other Cache-Control "no-cache"
 
 		# SPA: неизвестные пути отдаём в 200.html, роутинг делает Nuxt

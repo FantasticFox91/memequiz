@@ -21,6 +21,8 @@ type SavedProgress = {
   introsSeen: string[];
   // начало текущей попытки (Date.now()): для показа времени повторной попытки
   startedAt: number;
+  // id вопросов в порядке попытки: сервер перемешивает их на каждый запрос, а index завязан на порядок
+  order?: string[];
 };
 
 type Step = { round: PublicRound; question: PublicQuestion; isRoundStart: boolean };
@@ -74,6 +76,7 @@ export const useQuizStore = defineStore('quiz', () => {
       answers: answers.value,
       introsSeen: introsSeen.value,
       startedAt: startedAt.value ?? Date.now(),
+      order: steps.value.map(({ question }) => question.id),
     } satisfies SavedProgress);
   }
 
@@ -92,6 +95,7 @@ export const useQuizStore = defineStore('quiz', () => {
       resetProgress();
       return;
     }
+    if (Array.isArray(saved.order)) applyOrder(saved.order);
     const valid: Record<string, string> = {};
     for (const { question } of steps.value) {
       const optionId = saved.answers?.[question.id];
@@ -102,6 +106,17 @@ export const useQuizStore = defineStore('quiz', () => {
     introsSeen.value = Array.isArray(saved.introsSeen) ? saved.introsSeen : [];
     index.value = Math.min(Math.max(0, saved.index | 0), Math.max(0, total.value - 1));
     startedAt.value = typeof saved.startedAt === 'number' ? saved.startedAt : null;
+  }
+
+  // вернуть вопросам в раундах порядок сохранённой попытки; новые вопросы (не из order) — в конец раунда
+  function applyOrder(order: string[]) {
+    if (!rounds.value) return;
+    const position = new Map(order.map((id, i) => [id, i]));
+    const rank = (q: PublicQuestion) => position.get(q.id) ?? Number.MAX_SAFE_INTEGER;
+    rounds.value = rounds.value.map((round) => ({
+      ...round,
+      questions: [...round.questions].sort((a, b) => rank(a) - rank(b)),
+    }));
   }
 
   async function load() {
@@ -118,10 +133,9 @@ export const useQuizStore = defineStore('quiz', () => {
       ]);
       rounds.value = quiz;
       restoreProgress();
-      if (startedAt.value === null) {
-        startedAt.value = Date.now();
-        saveProgress();
-      }
+      if (startedAt.value === null) startedAt.value = Date.now();
+      // всегда: порядок вопросов этой попытки должен попасть в прогресс до первого ответа
+      saveProgress();
     } catch (e) {
       loadError.value = apiErrorMessage(e);
     } finally {

@@ -17,13 +17,17 @@ function shuffle<T>(items: readonly T[]): T[] {
 export class QuizService {
   constructor(private readonly questions: QuestionsService) {}
 
-  // порядок раундов и вопросов как в файле; варианты перемешиваются на каждый запрос
+  // порядок раундов как в файле; вопросы внутри раунда и варианты перемешиваются на каждый запрос
+  // (фронт держит порядок своей попытки в сохранённом прогрессе)
   getPublicRounds(): PublicRound[] {
     return this.questions.getRounds().map((round) => {
       const publicRound = toPublicRound(round);
       return {
         ...publicRound,
-        questions: publicRound.questions.map((q) => ({ ...q, options: shuffle(q.options) })),
+        questions: shuffle(publicRound.questions).map((q) => ({
+          ...q,
+          options: shuffle(q.options),
+        })),
       };
     });
   }
