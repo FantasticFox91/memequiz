@@ -13,6 +13,7 @@
     "format": "prettier --write .",
     "content:optimize": "node scripts/optimize-memes.mjs",
     "backup:pull": "bash scripts/pull-backups.sh",
+    "content:brand": "node scripts/make-brand-assets.mjs",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
     "db:down": "docker compose -f docker-compose.dev.yml down",
     "db:migrate": "pnpm --filter @memequiz/api db:migrate",

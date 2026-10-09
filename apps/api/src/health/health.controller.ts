@@ -1,7 +1,10 @@
 import { Controller, Get, ServiceUnavailableException } from '@nestjs/common';
 import type { HealthResponse } from '@memequiz/shared';
+import { SkipThrottle } from '@nestjs/throttler';
 import { PrismaService } from '../prisma/prisma.service';
 
+// uptime-мониторинг не должен упираться в лимиты
+@SkipThrottle({ participant: true, ip: true })
 @Controller('health')
 export class HealthController {
   constructor(private readonly prisma: PrismaService) {}

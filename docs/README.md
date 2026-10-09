@@ -45,8 +45,8 @@
 | 4 | Фронт: веб-версия ✅ | 6–8 ч | [04-frontend-web.md](04-frontend-web.md) |
 | 5 | ~~Интеграция с Google Sheets~~ (отменён) | — | [05-google-sheets.md](05-google-sheets.md) |
 | 6 | Деплой веб-версии ✅ | 2–3 ч | [06-deploy-web.md](06-deploy-web.md) |
-| 7 | Telegram Mini App | 4–6 ч | [07-telegram-mini-app.md](07-telegram-mini-app.md) |
-| 8 | Полировка и защита | 3–5 ч | [08-polish-and-protection.md](08-polish-and-protection.md) |
+| 7 | Telegram Mini App ✅ | 4–6 ч | [07-telegram-mini-app.md](07-telegram-mini-app.md) |
+| 8 | Полировка и защита ✅ | 3–5 ч | [08-polish-and-protection.md](08-polish-and-protection.md) |
 
 **Итого:** примерно 30–45 часов.
 

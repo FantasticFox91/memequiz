@@ -75,6 +75,12 @@ export const leaderboardEntrySchema = quizResultSchema.extend({
 
 export const leaderboardResponseSchema = z.array(leaderboardEntrySchema);
 
+// GET /api/bot — username бота для ссылки «Поделиться» из Telegram (t.me/<username>?startapp).
+// null — бот выключен или ещё не запустился: тогда делимся ссылкой на сайт
+export const botInfoResponseSchema = z.object({
+  username: z.string().nullable(),
+});
+
 export type QuizResponse = z.infer<typeof quizResponseSchema>;
 export type Answer = z.infer<typeof answerSchema>;
 export type SubmitRequest = z.infer<typeof submitRequestSchema>;
@@ -86,3 +92,4 @@ export type StatusResponse = z.infer<typeof statusResponseSchema>;
 export type LeaderboardQuery = z.infer<typeof leaderboardQuerySchema>;
 export type LeaderboardEntry = z.infer<typeof leaderboardEntrySchema>;
 export type LeaderboardResponse = z.infer<typeof leaderboardResponseSchema>;
+export type BotInfoResponse = z.infer<typeof botInfoResponseSchema>;

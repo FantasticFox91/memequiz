@@ -8,6 +8,9 @@ COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
 RUN pnpm fetch
 COPY . .
 RUN pnpm install --offline --frozen-lockfile --filter @memequiz/web...
+# адрес сайта для абсолютных og:image/og:url (превью ссылки); пустой — пути относительные
+ARG SITE_ADDRESS=
+ENV SITE_ADDRESS=$SITE_ADDRESS
 # собирает shared, затем nuxt generate
 RUN pnpm --filter @memequiz/web... build
 

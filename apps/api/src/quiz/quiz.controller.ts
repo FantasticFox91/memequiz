@@ -1,5 +1,7 @@
 import { Body, Controller, Get, HttpCode, Post } from '@nestjs/common';
 import { type QuizResponse, type SubmitResponse, submitRequestSchema } from '@memequiz/shared';
+import { Throttle } from '@nestjs/throttler';
+import { SUBMIT_LIMITS } from '../common/throttling';
 import { createZodDto } from '../common/zod-validation.pipe';
 import { CurrentParticipant } from '../participant/current-participant.decorator';
 import { type ParticipantIdentity, withNickname } from '../participant/participant.resolver';
@@ -31,6 +33,7 @@ export class QuizController {
   // Повторная попытка «для себя»: баллы считаются и возвращаются в attempt, но не сохраняются
   @Post('submit')
   @HttpCode(200)
+  @Throttle(SUBMIT_LIMITS)
   async submit(
     @Body() body: SubmitRequestDto,
     @CurrentParticipant() identity: ParticipantIdentity,

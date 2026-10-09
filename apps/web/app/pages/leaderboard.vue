@@ -42,10 +42,7 @@ const isMe = (nickname: string) =>
       <span class="spinner" aria-label="Загрузка" />
     </div>
 
-    <div v-else-if="error" class="center">
-      <p class="error-text">{{ error }}</p>
-      <button class="btn" type="button" @click="load">Повторить</button>
-    </div>
+    <ErrorState v-else-if="error" :message="error" @retry="load" />
 
     <p v-else-if="entries && entries.length === 0" class="hint center">
       Пока никто не прошёл викторину. Будь первым!
@@ -62,7 +59,14 @@ const isMe = (nickname: string) =>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="entry in entries" :key="entry.rank" :class="{ me: isMe(entry.nickname) }">
+        <!-- лесенка только для первых строк: длинный список не должен появляться секундами -->
+        <tr
+          v-for="(entry, i) in entries"
+          :key="entry.rank"
+          class="rise-in"
+          :style="{ '--i': Math.min(i, 12) }"
+          :class="{ me: isMe(entry.nickname) }"
+        >
           <td class="rank">{{ entry.rank }}</td>
           <td class="nick">{{ entry.nickname }}</td>
           <td class="num">{{ entry.score }}/{{ entry.total }}</td>

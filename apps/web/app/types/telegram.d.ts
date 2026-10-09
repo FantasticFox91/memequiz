@@ -25,6 +25,7 @@ interface TelegramBackButton {
 }
 
 interface TelegramHapticFeedback {
+  impactOccurred(style: 'light' | 'medium' | 'heavy' | 'rigid' | 'soft'): TelegramHapticFeedback;
   selectionChanged(): TelegramHapticFeedback;
   notificationOccurred(type: 'error' | 'success' | 'warning'): TelegramHapticFeedback;
 }
@@ -35,6 +36,7 @@ interface TelegramWebApp {
   isVersionAtLeast(version: string): boolean;
   ready(): void;
   expand(): void;
+  openTelegramLink(url: string): void;
   enableClosingConfirmation(): void;
   disableClosingConfirmation(): void;
   MainButton: TelegramBottomButton;

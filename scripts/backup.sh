@@ -26,3 +26,10 @@ chmod 600 "$FILE"
 ls -1t "$DIR"/memequiz-*.dump | tail -n +"$((KEEP + 1))" | xargs -r rm --
 
 echo "$(date -Is) ok $FILE ($(du -h "$FILE" | cut -f1))"
+
+# отметка для мониторинга (Uptime Kuma, монитор типа Push): нет отметки больше суток — алерт.
+# URL берём из BACKUP_PUSH_URL в .env; не задан — пропускаем. Сбой отметки бэкап не валит
+PUSH_URL="$(grep -E '^BACKUP_PUSH_URL=' .env 2>/dev/null | cut -d= -f2- || true)"
+if [ -n "$PUSH_URL" ]; then
+  curl -fsS -m 10 "$PUSH_URL" >/dev/null || echo "$(date -Is) push to monitoring failed"
+fi

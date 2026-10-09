@@ -26,6 +26,12 @@ import {
 export class BotService implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger(BotService.name);
   private bot: Bot | null = null;
+  // известен после старта бота; нужен фронту для ссылки t.me/<username>?startapp
+  private botUsername: string | null = null;
+
+  get username(): string | null {
+    return this.botUsername;
+  }
 
   constructor(
     private readonly config: ConfigService<Env, true>,
@@ -41,7 +47,9 @@ export class BotService implements OnApplicationBootstrap, OnApplicationShutdown
       return;
     }
     if (!token || !webAppUrl) {
-      this.logger.warn('BOT_ENABLED=true, but TELEGRAM_BOT_TOKEN or WEB_APP_URL is not set: bot is off');
+      this.logger.warn(
+        'BOT_ENABLED=true, but TELEGRAM_BOT_TOKEN or WEB_APP_URL is not set: bot is off',
+      );
       return;
     }
 
@@ -58,7 +66,9 @@ export class BotService implements OnApplicationBootstrap, OnApplicationShutdown
     );
     // на любое другое сообщение — подсказка с той же кнопкой
     bot.on('message', (ctx) => ctx.reply(HELP_TEXT, { reply_markup: keyboard }));
-    bot.catch((err) => this.logger.error(`Update ${err.ctx.update.update_id} failed: ${err.message}`));
+    bot.catch((err) =>
+      this.logger.error(`Update ${err.ctx.update.update_id} failed: ${err.message}`),
+    );
 
     this.bot = bot;
     void this.setupProfile(bot, webAppUrl);
@@ -66,7 +76,10 @@ export class BotService implements OnApplicationBootstrap, OnApplicationShutdown
     bot
       .start({
         drop_pending_updates: true,
-        onStart: (me) => this.logger.log(`Bot @${me.username} started (long polling)`),
+        onStart: (me) => {
+          this.botUsername = me.username;
+          this.logger.log(`Bot @${me.username} started (long polling)`);
+        },
       })
       .catch((e: Error) => {
         this.logger.error(`Bot polling stopped: ${e.message}`);

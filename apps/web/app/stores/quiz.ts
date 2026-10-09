@@ -52,6 +52,8 @@ export const useQuizStore = defineStore('quiz', () => {
   const practice = ref(false);
   const submitting = ref(false);
   const submitError = ref<string | null>(null);
+  // только что отправили: экран результата один раз празднует (вибрация, конфетти) и сбрасывает
+  const celebrate = ref(false);
 
   // вопросы всех раундов подряд: прогресс сквозной по всей викторине
   const steps = computed<Step[]>(() =>
@@ -216,6 +218,7 @@ export const useQuizStore = defineStore('quiz', () => {
         response.isFirst ? null : { ...response.attempt, durationMs },
       );
       practice.value = false;
+      celebrate.value = true;
       resetProgress();
       rounds.value = null;
       return true;
@@ -240,6 +243,7 @@ export const useQuizStore = defineStore('quiz', () => {
     practice,
     submitting,
     submitError,
+    celebrate,
     total,
     current,
     isLast,

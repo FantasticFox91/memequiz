@@ -1,5 +1,7 @@
 import { Controller, Get, Query } from '@nestjs/common';
 import { type StatusResponse, statusQuerySchema } from '@memequiz/shared';
+import { Throttle } from '@nestjs/throttler';
+import { STATUS_LIMITS } from '../common/throttling';
 import { createZodDto } from '../common/zod-validation.pipe';
 import { CurrentParticipant } from '../participant/current-participant.decorator';
 import { type ParticipantIdentity, withNickname } from '../participant/participant.resolver';
@@ -13,6 +15,7 @@ export class MeController {
 
   // участник — кука или initData; ?nickname=... на сайте — заодно проверить, свободен ли ник (409)
   @Get('status')
+  @Throttle(STATUS_LIMITS)
   async status(
     @CurrentParticipant() identity: ParticipantIdentity,
     @Query() query: StatusQueryDto,

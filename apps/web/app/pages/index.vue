@@ -49,9 +49,22 @@ const usesMainButton = useTelegramMainButton(
   () => void start(),
 );
 
+const haptics = useHaptics();
+// перезапуск анимации покачивания: класс снимается и ставится заново
+const shaking = ref(false);
+function shake() {
+  haptics.notify('error');
+  shaking.value = false;
+  requestAnimationFrame(() => (shaking.value = true));
+}
+
 async function start() {
   touched.value = true;
-  if (!parsed.value.success || starting.value) return;
+  if (starting.value) return;
+  if (!parsed.value.success) {
+    shake();
+    return;
+  }
 
   const nickname = parsed.value.data;
   // другой ник: прогресс и результат с прошлого ника не показываем, статус спросим заново
@@ -71,6 +84,7 @@ async function start() {
     await navigateTo(completed ? '/result' : '/quiz');
   } catch (e) {
     startError.value = apiErrorMessage(e);
+    shake();
   } finally {
     starting.value = false;
   }
@@ -79,8 +93,8 @@ async function start() {
 
 <template>
   <section class="start">
-    <h1>Насколько хорошо ты знаешь мемы?</h1>
-    <p class="hint">
+    <h1 class="rise-in">Насколько хорошо ты знаешь мемы?</h1>
+    <p class="hint rise-in" style="--i: 1">
       Несколько раундов. В зачёт идёт только первая попытка, потом можно проходить для себя.
     </p>
 
@@ -88,7 +102,7 @@ async function start() {
       <span class="spinner" aria-label="Загрузка" />
     </div>
 
-    <form v-else class="form" novalidate @submit.prevent="start">
+    <form v-else class="form rise-in" style="--i: 2" novalidate @submit.prevent="start">
       <label for="nickname" class="label">Твой ник</label>
       <!-- в Telegram ник из профиля: только показываем -->
       <p v-if="fixedNickname" id="nickname" class="input fixed">{{ fixedNickname }}</p>
@@ -97,7 +111,8 @@ async function start() {
         id="nickname"
         v-model="input"
         class="input"
-        :class="{ invalid: touched && validationError }"
+        :class="{ invalid: touched && validationError, shake: shaking }"
+        @animationend="shaking = false"
         type="text"
         autocomplete="nickname"
         enterkeyhint="go"
@@ -162,6 +177,7 @@ async function start() {
   font: inherit;
   font-size: 17px;
   outline: none;
+  transition: border-color 0.15s ease;
 }
 
 .input:focus {

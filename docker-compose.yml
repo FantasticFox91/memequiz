@@ -12,6 +12,8 @@ services:
     build:
       context: .
       dockerfile: docker/web.Dockerfile
+      args:
+        SITE_ADDRESS: ${SITE_ADDRESS:?SITE_ADDRESS is required}
     image: memequiz-web:latest
     restart: unless-stopped
     environment:

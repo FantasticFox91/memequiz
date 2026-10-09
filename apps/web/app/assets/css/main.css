@@ -88,8 +88,14 @@ h1 {
   cursor: default;
 }
 
+.btn {
+  transition:
+    scale 0.12s ease,
+    opacity 0.2s ease;
+}
+
 .btn:not(:disabled):active {
-  transform: scale(0.98);
+  scale: 0.97;
 }
 
 .btn-secondary {
@@ -118,5 +124,93 @@ h1 {
 @keyframes spin {
   to {
     transform: rotate(360deg);
+  }
+}
+
+/*
+ * Анимации. Только transform и opacity, чтобы не трогать layout.
+ * При prefers-reduced-motion движение убираем, мягкие появления по opacity оставляем.
+ */
+:root {
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* смена страниц (nuxt.config: app.pageTransition) */
+.page-enter-active,
+.page-leave-active {
+  transition:
+    opacity 0.18s ease,
+    translate 0.18s var(--ease-out);
+}
+
+.page-enter-from {
+  opacity: 0;
+  translate: 0 8px;
+}
+
+.page-leave-to {
+  opacity: 0;
+}
+
+/* появление снизу; задержка для «лесенки» через --i (номер элемента) */
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    translate: 0 12px;
+  }
+}
+
+.rise-in {
+  animation: rise-in 0.35s var(--ease-out) both;
+  animation-delay: calc(var(--i, 0) * 45ms);
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    scale: 0.85;
+  }
+}
+
+/* ошибка ввода: короткое покачивание */
+@keyframes shake {
+  20%,
+  60% {
+    translate: -6px 0;
+  }
+  40%,
+  80% {
+    translate: 6px 0;
+  }
+}
+
+.shake {
+  animation: shake 0.35s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page-enter-from {
+    translate: none;
+  }
+
+  .spinner {
+    animation-duration: 2s;
+  }
+
+  .shake {
+    animation: none;
+  }
+
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+    }
+  }
+
+  @keyframes pop-in {
+    from {
+      opacity: 0;
+    }
   }
 }

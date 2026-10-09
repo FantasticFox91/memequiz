@@ -7,6 +7,7 @@ import {
 } from '@memequiz/shared';
 import type { Response } from 'express';
 import { randomUUID } from 'node:crypto';
+import { isNicknameAllowed } from './nickname-filter';
 import type { TelegramRequest } from './telegram-auth.guard';
 
 /** Кто прислал запрос. nickname задан, только если его нельзя выбрать (Telegram). */
@@ -29,12 +30,15 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/
 export function resolveIdentity(req: TelegramRequest, res: Response): ParticipantIdentity {
   const tgUser = req.telegramUser;
   if (tgUser) {
-    return { source: 'tg', externalId: String(tgUser.id), fixedNickname: telegramNickname(tgUser) };
+    // ник из профиля не выбирают, поэтому неприличный не отклоняем, а заменяем на tg<id>
+    const profileNickname = telegramNickname(tgUser);
+    const fixedNickname = isNicknameAllowed(profileNickname) ? profileNickname : `tg${tgUser.id}`;
+    return { source: 'tg', externalId: String(tgUser.id), fixedNickname };
   }
   return { source: 'web', externalId: getOrIssueWebId(req, res) };
 }
 
-function readCookie(req: TelegramRequest, name: string): string | undefined {
+export function readCookie(req: TelegramRequest, name: string): string | undefined {
   for (const part of req.headers.cookie?.split(';') ?? []) {
     const [key, ...rest] = part.trim().split('=');
     if (key === name) return decodeURIComponent(rest.join('='));
@@ -71,6 +75,12 @@ export function withNickname(identity: ParticipantIdentity, nickname: unknown): 
     throw new BadRequestException({
       message: 'Validation failed',
       issues: result.error.issues.map((i) => ({ path: 'nickname', message: i.message })),
+    });
+  }
+  if (!isNicknameAllowed(result.data)) {
+    throw new BadRequestException({
+      message: 'Validation failed',
+      issues: [{ path: 'nickname', message: 'Такой ник не подойдёт, выбери другой' }],
     });
   }
   return { source, externalId, nickname: result.data };
