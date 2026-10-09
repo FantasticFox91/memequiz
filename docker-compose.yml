@@ -40,6 +40,8 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
       TG_INIT_DATA_TTL: ${TG_INIT_DATA_TTL:-86400}
+      BOT_ENABLED: ${BOT_ENABLED:-true}
+      WEB_APP_URL: https://${SITE_ADDRESS}
     depends_on:
       postgres:
         condition: service_healthy

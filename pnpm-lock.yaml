@@ -44,6 +44,9 @@ importers:
       dotenv:
         specifier: ^17.2.3
         version: 17.4.2
+      grammy:
+        specifier: ^1.46.0
+        version: 1.46.0
       prisma:
         specifier: 7.10.0
         version: 7.10.0(@types/react@19.3.0)(magicast@0.5.5)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@6.0.3)
@@ -619,6 +622,9 @@ packages:
     engines: {node: '>=18'}
     cpu: [x64]
     os: [win32]
+
+  '@grammyjs/types@5.0.0':
+    resolution: {integrity: sha512-iq1Qrq1iPKkB8yAa0qSuIURMZOCuqTY5pWy5gHpCeL1oQ+GPadGhw/cDTVE8waJwuCzacUzuIjRv1sESvk7u7A==}
 
   '@img/colour@1.1.0':
     resolution: {integrity: sha512-Td76q7j57o/tLVdgS746cYARfSyxk8iEfRxewL9h4OMzYhbW4TAcppl0mT4eyqXddh6L/jwoM75mo7ixa/pCeQ==}
@@ -2921,6 +2927,10 @@ packages:
 
   grammex@3.1.13:
     resolution: {integrity: sha512-LnPnhOBLEJEVKS8WFDVaA397L9Kq55Q9oSITJiVLHVdhAclfUkWzQv74KhvZHKL2Q09Pb1XdsrOsZ4LfTFFTEg==}
+
+  grammy@1.46.0:
+    resolution: {integrity: sha512-/8Qw+iisrUdOMk+p2mjEHouMm/BBdBEN1DHh16wiTpRUZkxDG3PxexdjCvR+wvK3LWPdrEvnQbdrwpU954sPhg==}
+    engines: {node: ^12.20.0 || >=14.13.1}
 
   graphmatch@1.1.1:
     resolution: {integrity: sha512-5ykVn/EXM1hF0XCaWh05VbYvEiOL2lY1kBxZtaYsyvjp7cmWOU1XsAdfQBwClraEofXDT197lFbXOEVMHpvQOg==}
@@ -5342,6 +5352,8 @@ snapshots:
 
   '@esbuild/win32-x64@0.28.2':
     optional: true
+
+  '@grammyjs/types@5.0.0': {}
 
   '@img/colour@1.1.0': {}
 
@@ -7817,6 +7829,16 @@ snapshots:
   graceful-fs@4.2.11: {}
 
   grammex@3.1.13: {}
+
+  grammy@1.46.0:
+    dependencies:
+      '@grammyjs/types': 5.0.0
+      abort-controller: 3.0.0
+      debug: 4.4.3
+      node-fetch: 2.7.0
+    transitivePeerDependencies:
+      - encoding
+      - supports-color
 
   graphmatch@1.1.1: {}
 

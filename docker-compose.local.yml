@@ -5,3 +5,7 @@ services:
     command: caddy run --config /etc/caddy/Caddyfile.local --adapter caddyfile
     ports: !override
       - '8080:80'
+  api:
+    environment:
+      # не отбирать обновления у бота на проде, если в .env prod-токен
+      BOT_ENABLED: 'false'

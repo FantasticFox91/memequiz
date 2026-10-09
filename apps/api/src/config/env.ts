@@ -14,6 +14,11 @@ export const envSchema = z.object({
   TELEGRAM_BOT_TOKEN: optionalString,
   // сколько секунд initData из Telegram считается свежим
   TG_INIT_DATA_TTL: z.coerce.number().int().positive().default(86400),
+  // бот (long polling) включается явно: у Telegram один получатель обновлений на токен,
+  // локальный dev с тем же токеном отбирал бы их у прода
+  BOT_ENABLED: z.stringbool().default(false),
+  // адрес Mini App для кнопок бота, например https://memequiz.example.com
+  WEB_APP_URL: optionalString.pipe(z.url({ protocol: /^https$/ }).optional()),
 });
 
 export type Env = z.infer<typeof envSchema>;

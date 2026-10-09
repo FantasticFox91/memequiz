@@ -67,14 +67,16 @@
 
 ### BotFather
 - [x] Main Mini App включён (`Bot Settings → Configure Mini App`), прямая ссылка `t.me/<bot>?startapp`. Проверено на тестовой странице `sandbox/tg-test`.
-- [ ] Menu Button и Main Mini App переключить на новый адрес `https://memequiz.94-141-161-179.sslip.io` (раньше был `memequiz.139-100-225-182.sslip.io`, старый сервер).
+- [x] Menu Button: бот сам ставит его на `WEB_APP_URL` при каждом старте (`setChatMenuButton`), руками в BotFather не нужно.
+- [ ] Main Mini App переключить на новый адрес `https://memequiz.94-141-161-179.sslip.io` (раньше был `memequiz.139-100-225-182.sslip.io`, старый сервер). Через API это не настраивается, только в BotFather.
 - [ ] Убедиться, что URL в обоих местах ведёт на викторину, а не на тестовую страницу.
-- [ ] Задать описание и картинку бота.
+- [x] Описание («What can this bot do?») и короткое описание бот выставляет сам при старте (`setMyDescription`, `setMyShortDescription`), тексты в `bot/bot.texts.ts`.
+- [ ] Картинка бота (аватар) — вручную в BotFather (`/setuserpic`).
 
-### Бот (опционально)
-- [ ] Обработчик `/start`: приветствие и inline-кнопка `web_app` «Пройти викторину».
-- [ ] Реализация: grammY в отдельном небольшом сервисе в compose или модуль внутри Nest.
-- [ ] Режим: long polling (проще, не нужен входящий маршрут) или webhook через Caddy (`/tg/webhook` с secret token).
+### Бот
+- [x] Обработчик `/start`: приветствие с именем, числом вопросов и списком раундов из `questions.json`, inline-кнопка `web_app` «Пройти викторину». На любое другое сообщение — подсказка с той же кнопкой.
+- [x] Реализация: grammY, модуль `BotModule` внутри Nest (`apps/api/src/bot`). Ошибки бота логируются и не роняют api.
+- [x] Режим: long polling, входящий маршрут не нужен. Включается `BOT_ENABLED=true` (в prod compose по умолчанию), `WEB_APP_URL` в compose собирается из `SITE_ADDRESS`. Локально бот выключен: у Telegram один получатель обновлений на токен.
 
 ### Тестирование
 - [ ] iOS: вьюпорт, safe area, клавиатура при вводе ника.
