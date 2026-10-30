@@ -1,17 +1,24 @@
 <script setup lang="ts">
-import { NICKNAME_MAX, nicknameKey, nicknameSchema, telegramNickname } from '@memequiz/shared';
+import { NICKNAME_MAX, type QuizInfo, nicknameSchema, telegramNickname } from '@memequiz/shared';
 
 const participant = useParticipantStore();
 const quiz = useQuizStore();
 const telegram = useTelegram();
+const haptics = useHaptics();
 
-// в Telegram ник из профиля и не меняется (тот же, что посчитает сервер); на сайте — свой
-const fixedNickname = telegram.user ? telegramNickname(telegram.user) : null;
+// в Telegram ник из профиля (тот же, что посчитает сервер); после первой засчитанной викторины —
+// ник её результата: в лидербордах всех викторин участник под одним ником
+const tgNickname = telegram.user ? telegramNickname(telegram.user) : null;
+const fixedNickname = computed(() => quiz.lockedNickname ?? tgNickname);
 
-const input = ref(fixedNickname ?? participant.nickname);
+const input = ref(participant.nickname);
 const touched = ref(!!input.value);
-const starting = ref(false);
+// id викторины, по кнопке которой идёт проверка ника
+const starting = ref<string | null>(null);
 const startError = ref<string | null>(null);
+
+const loading = ref(false);
+const loadError = ref<string | null>(null);
 
 // те же правила, что на api
 const parsed = computed(() => nicknameSchema.safeParse(input.value));
@@ -19,37 +26,21 @@ const validationError = computed(() =>
   parsed.value.success ? null : (parsed.value.error.issues[0]?.message ?? 'Неверный ник'),
 );
 
-// Участник известен сразу (кука или user.id): если уже проходил — ведём на результат, не спрашивая ник.
-// Один раз за запуск: при возврате на главную вручную не перебрасываем
-const statusChecked = useState('status-checked', () => false);
-const checkingStatus = ref(false);
-
-onMounted(async () => {
-  if (statusChecked.value) return;
-  statusChecked.value = true;
-  checkingStatus.value = true;
+// участник известен сразу (кука или user.id): его результаты и закреплённый ник
+async function load() {
+  loading.value = true;
+  loadError.value = null;
   try {
-    const completed = await quiz.fetchStatus();
-    if (completed && quiz.result) {
-      participant.setNickname(quiz.result.nickname);
-      await navigateTo('/result', { replace: true });
-    }
-  } catch {
-    // не страшно: проверим ещё раз при «Начать»
+    await Promise.all([quiz.fetchStatus(), quiz.loadQuizzes()]);
+    if (quiz.lockedNickname) participant.setNickname(quiz.lockedNickname);
+  } catch (e) {
+    loadError.value = apiErrorMessage(e);
   } finally {
-    checkingStatus.value = false;
+    loading.value = false;
   }
-});
+}
+onMounted(load);
 
-const usesMainButton = useTelegramMainButton(
-  () =>
-    checkingStatus.value
-      ? null
-      : { text: 'Начать', enabled: !validationError.value, loading: starting.value },
-  () => void start(),
-);
-
-const haptics = useHaptics();
 // перезапуск анимации покачивания: класс снимается и ставится заново
 const shaking = ref(false);
 function shake() {
@@ -58,83 +49,113 @@ function shake() {
   requestAnimationFrame(() => (shaking.value = true));
 }
 
-async function start() {
+async function open(item: QuizInfo) {
+  if (item.draft || starting.value) return;
+  haptics.impact('light');
+  startError.value = null;
+
+  if (fixedNickname.value) {
+    participant.setNickname(fixedNickname.value);
+    await navigateTo(quiz.results[item.id] ? `/result/${item.id}` : `/quiz/${item.id}`);
+    return;
+  }
+
   touched.value = true;
-  if (starting.value) return;
   if (!parsed.value.success) {
     shake();
     return;
   }
-
   const nickname = parsed.value.data;
-  // другой ник: прогресс и результат с прошлого ника не показываем, статус спросим заново
-  if (nicknameKey(nickname) !== participant.nicknameKey) {
-    quiz.resetProgress();
-    quiz.clearResult();
-    quiz.rounds = null;
-  }
-
-  starting.value = true;
-  startError.value = null;
+  starting.value = item.id;
   try {
-    // на сайте заодно проверяется, что ник не занят (409 с текстом ошибки)
-    const completed = await quiz.fetchStatus(fixedNickname ? undefined : nickname);
-    // уже проходил: в зачёте ник первой попытки
-    participant.setNickname(completed && quiz.result ? quiz.result.nickname : nickname);
-    await navigateTo(completed ? '/result' : '/quiz');
+    // ник ещё не закреплён: проверить, что он свободен (409 с текстом ошибки)
+    await quiz.fetchStatus(nickname);
+    participant.setNickname(quiz.lockedNickname ?? nickname);
+    await navigateTo(quiz.results[item.id] ? `/result/${item.id}` : `/quiz/${item.id}`);
   } catch (e) {
     startError.value = apiErrorMessage(e);
     shake();
   } finally {
-    starting.value = false;
+    starting.value = null;
   }
+}
+
+function questionsLabel(total: number) {
+  const mod10 = total % 10;
+  const mod100 = total % 100;
+  if (mod10 === 1 && mod100 !== 11) return `${total} вопрос`;
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 12 || mod100 > 14)) return `${total} вопроса`;
+  return `${total} вопросов`;
 }
 </script>
 
 <template>
   <section class="start">
-    <h1 class="rise-in">Насколько хорошо ты знаешь мемы?</h1>
+    <h1 class="rise-in">Выбери викторину</h1>
     <p class="hint rise-in" style="--i: 1">
-      Несколько раундов. В зачёт идёт только первая попытка, потом можно проходить для себя.
+      В каждой викторине в зачёт идёт только первая попытка, потом можно проходить для себя.
     </p>
 
-    <div v-if="checkingStatus" class="checking">
+    <div v-if="loading && !quiz.quizzes" class="checking">
       <span class="spinner" aria-label="Загрузка" />
     </div>
 
-    <form v-else class="form rise-in" style="--i: 2" novalidate @submit.prevent="start">
-      <label for="nickname" class="label">Твой ник</label>
-      <!-- в Telegram ник из профиля: только показываем -->
-      <p v-if="fixedNickname" id="nickname" class="input fixed">{{ fixedNickname }}</p>
-      <input
-        v-else
-        id="nickname"
-        v-model="input"
-        class="input"
-        :class="{ invalid: touched && validationError, shake: shaking }"
-        @animationend="shaking = false"
-        type="text"
-        autocomplete="nickname"
-        enterkeyhint="go"
-        :maxlength="NICKNAME_MAX + 8"
-        placeholder="Например, Вася"
-        @blur="touched = true"
-        @input="touched = true"
-      />
-      <p v-if="touched && validationError" class="error-text">{{ validationError }}</p>
-      <p v-else-if="startError" class="error-text">{{ startError }}</p>
+    <ErrorState v-else-if="loadError && !quiz.quizzes" :message="loadError" @retry="load" />
 
-      <!-- в Telegram вместо неё MainButton; Enter в поле по-прежнему отправляет форму -->
-      <button
-        v-if="!usesMainButton"
-        class="btn"
-        type="submit"
-        :disabled="!!validationError || starting"
-      >
-        <span v-if="starting" class="spinner" aria-hidden="true" />
-        Начать
-      </button>
-    </form>
+    <template v-else-if="quiz.quizzes">
+      <form class="form rise-in" style="--i: 2" novalidate @submit.prevent>
+        <label for="nickname" class="label">Твой ник</label>
+        <!-- в Telegram и после первой засчитанной викторины ник не меняется: только показываем -->
+        <p v-if="fixedNickname" id="nickname" class="input fixed">{{ fixedNickname }}</p>
+        <input
+          v-else
+          id="nickname"
+          v-model="input"
+          class="input"
+          :class="{ invalid: touched && validationError, shake: shaking }"
+          @animationend="shaking = false"
+          type="text"
+          autocomplete="nickname"
+          enterkeyhint="done"
+          :maxlength="NICKNAME_MAX + 8"
+          placeholder="Например, Вася"
+          @blur="touched = true"
+          @input="touched = true"
+        />
+        <p v-if="!fixedNickname && touched && validationError" class="error-text">
+          {{ validationError }}
+        </p>
+        <p v-else-if="startError" class="error-text">{{ startError }}</p>
+      </form>
+
+      <div class="quizzes">
+        <button
+          v-for="(item, i) in quiz.quizzes"
+          :key="item.id"
+          type="button"
+          class="quiz-card rise-in"
+          :class="{ done: !!quiz.results[item.id], draft: item.draft }"
+          :style="{ '--i': i + 3 }"
+          :disabled="item.draft || !!starting"
+          @click="open(item)"
+        >
+          <span class="emoji" aria-hidden="true">{{ item.emoji ?? '🧩' }}</span>
+          <span class="body">
+            <span class="title">{{ item.title }}</span>
+            <span v-if="item.description" class="description">{{ item.description }}</span>
+          </span>
+          <span class="meta">
+            <span v-if="starting === item.id" class="spinner" aria-label="Загрузка" />
+            <template v-else-if="item.draft">Скоро</template>
+            <template v-else-if="quiz.results[item.id]?.pending">⏳ на проверке</template>
+            <template v-else-if="quiz.results[item.id]">
+              ✓ {{ quiz.results[item.id]!.score }}/{{ quiz.results[item.id]!.total }}
+            </template>
+            <template v-else>{{ questionsLabel(item.total) }}</template>
+          </span>
+        </button>
+      </div>
+    </template>
   </section>
 </template>
 
@@ -143,6 +164,10 @@ async function start() {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.start h1 {
+  margin: 0;
 }
 
 .checking {
@@ -195,7 +220,83 @@ async function start() {
   font-weight: 600;
 }
 
-.btn {
-  margin-top: 8px;
+.quizzes {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+}
+
+.quiz-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  min-height: 76px;
+  padding: 14px 16px;
+  border: 2px solid transparent;
+  border-radius: 16px;
+  background: var(--secondary-bg);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    scale 0.12s ease,
+    border-color 0.15s ease;
+}
+
+.quiz-card:not(:disabled):active {
+  scale: 0.98;
+}
+
+.quiz-card:disabled {
+  cursor: default;
+}
+
+.quiz-card.draft {
+  opacity: 0.55;
+}
+
+.quiz-card.done {
+  border-color: color-mix(in srgb, var(--success) 45%, transparent);
+}
+
+.emoji {
+  flex: none;
+  font-size: 34px;
+  line-height: 1;
+}
+
+.body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.description {
+  font-size: 14px;
+  color: var(--hint);
+}
+
+.meta {
+  flex: none;
+  display: flex;
+  align-items: center;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--hint);
+}
+
+.done .meta {
+  color: var(--success);
 }
 </style>

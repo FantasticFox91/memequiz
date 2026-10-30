@@ -35,6 +35,12 @@ export const STATUS_LIMITS = {
   ip: { ttl: MINUTE, limit: 120 },
 };
 
+// вход в админку: перебор пароля — не больше 5 попыток в минуту и 30 в час с одного IP
+export const ADMIN_LOGIN_LIMITS = {
+  participant: { ttl: MINUTE, limit: 5 },
+  ip: { ttl: HOUR, limit: 30 },
+};
+
 function participantTracker(req: TelegramRequest): string {
   if (req.telegramUser) return `tg:${req.telegramUser.id}`;
   const webId = readCookie(req, WEB_ID_COOKIE);

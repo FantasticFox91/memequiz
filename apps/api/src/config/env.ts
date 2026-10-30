@@ -19,6 +19,12 @@ export const envSchema = z.object({
   BOT_ENABLED: z.stringbool().default(false),
   // адрес Mini App для кнопок бота, например https://memequiz.example.com
   WEB_APP_URL: optionalString.pipe(z.url({ protocol: /^https$/ }).optional()),
+
+  // вход в админку (/admin, проверка текстовых ответов). Не заданы — админка выключена
+  ADMIN_USERNAME: optionalString,
+  ADMIN_PASSWORD: optionalString.pipe(
+    z.string().min(12, 'ADMIN_PASSWORD: от 12 символов').optional(),
+  ),
 });
 
 export type Env = z.infer<typeof envSchema>;

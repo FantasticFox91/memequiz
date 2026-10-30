@@ -14,9 +14,8 @@ export default defineNuxtPlugin(() => {
   const router = useRouter();
   const back = webApp.BackButton;
 
-  // на / и /result «назад» некуда: результат окончательный
-  const updateBack = (path: string) =>
-    path === '/quiz' || path === '/leaderboard' ? back.show() : back.hide();
+  // с главной «назад» некуда; с викторины, результата и лидерборда — к выбору викторины
+  const updateBack = (path: string) => (path === '/' ? back.hide() : back.show());
 
   back.onClick(() => {
     const { path } = router.currentRoute.value;

@@ -1,8 +1,12 @@
 <script setup lang="ts">
+import { ANSWER_TEXT_MAX } from '@memequiz/shared';
+
 definePageMeta({ middleware: 'nickname' });
 
 const quiz = useQuizStore();
 const telegram = useTelegram();
+const quizId = useRoute().params.id as string;
+quiz.selectQuiz(quizId);
 const haptics = useHaptics();
 
 const imageLoaded = ref(false);
@@ -10,7 +14,7 @@ const imageLoaded = ref(false);
 onMounted(async () => {
   // уже прошёл (например, вернулся «назад» после результата); повтор «для себя» — только с экрана результата
   if (quiz.result && !quiz.practice) {
-    await navigateTo('/result', { replace: true });
+    await navigateTo(`/result/${quizId}`, { replace: true });
     return;
   }
   // свайп вниз в Telegram закрыл бы Mini App посреди викторины
@@ -33,7 +37,7 @@ function startRound() {
 }
 
 function next() {
-  if (!quiz.selectedOptionId) return;
+  if (!quiz.hasAnswer) return;
   haptics.impact('light');
   quiz.next();
 }
@@ -43,19 +47,26 @@ const usesMainButton = useTelegramMainButton(
   () => {
     if (!quiz.current || quiz.loading || quiz.loadError) return null;
     if (quiz.showIntro) return { text: 'Начать раунд' };
-    if (!quiz.isLast) return { text: 'Далее', enabled: !!quiz.selectedOptionId };
+    if (!quiz.isLast) return { text: 'Далее', enabled: quiz.hasAnswer };
     return {
       text: quiz.submitError ? 'Повторить' : 'Завершить',
-      enabled: !!quiz.selectedOptionId && !quiz.submitting,
+      enabled: quiz.hasAnswer && !quiz.submitting,
       loading: quiz.submitting,
     };
   },
   () => {
     if (quiz.showIntro) startRound();
     else if (!quiz.isLast) next();
-    else if (quiz.selectedOptionId) void finish();
+    else if (quiz.hasAnswer) void finish();
   },
 );
+
+// Enter в поле ответа — как кнопка «Далее» / «Завершить»
+function submitText() {
+  if (!quiz.hasAnswer) return;
+  if (!quiz.isLast) next();
+  else if (!quiz.submitting) void finish();
+}
 
 // новая картинка: показать индикатор и заранее подгрузить следующую
 watch(
@@ -63,7 +74,8 @@ watch(
   () => {
     imageLoaded.value = false;
     const next = quiz.rounds?.flatMap((r) => r.questions)[quiz.index + 1];
-    if (next) new Image().src = next.image;
+    // аудио заранее не тянем: плеер сам начнёт загрузку, когда вопрос откроется
+    if (next?.image) new Image().src = next.image;
   },
   { immediate: true },
 );
@@ -78,7 +90,7 @@ const stepKey = computed(() =>
 
 async function finish() {
   // успех отмечает экран результата
-  if (await quiz.submit()) await navigateTo('/result');
+  if (await quiz.submit()) await navigateTo(`/result/${quizId}`);
   else haptics.notify('error');
 }
 </script>
@@ -96,7 +108,12 @@ async function finish() {
 
       <div class="progress">
         <div class="progress-meta">
-          <span>{{ quiz.current.round.title }}</span>
+          <span>
+            <template v-if="quiz.quizInfo"
+              >{{ quiz.quizInfo.emoji }} {{ quiz.quizInfo.title }} ·
+            </template>
+            {{ quiz.current.round.title }}
+          </span>
           <span>{{ quiz.index + 1 }}/{{ quiz.total }}</span>
         </div>
         <div
@@ -129,7 +146,7 @@ async function finish() {
         </div>
 
         <div v-else :key="stepKey" class="step">
-          <div class="image-box">
+          <div v-if="quiz.current.question.image" class="image-box">
             <span v-if="!imageLoaded" class="spinner image-spinner" aria-hidden="true" />
             <img
               :key="quiz.current.question.id"
@@ -141,9 +158,38 @@ async function finish() {
             />
           </div>
 
+          <AudioPlayer
+            v-if="quiz.current.question.audio"
+            :key="quiz.current.question.id"
+            :src="quiz.current.question.audio"
+          />
+
           <h2 class="question rise-in" style="--i: 1">{{ quiz.current.question.text }}</h2>
 
-          <div class="options">
+          <form
+            v-if="!quiz.current.question.options"
+            class="text-answer rise-in"
+            style="--i: 2"
+            @submit.prevent="submitText"
+          >
+            <input
+              :value="quiz.selectedOptionId ?? ''"
+              class="text-input"
+              type="text"
+              placeholder="Ваш ответ"
+              aria-label="Ваш ответ"
+              :maxlength="ANSWER_TEXT_MAX"
+              autocomplete="off"
+              autocapitalize="off"
+              spellcheck="false"
+              :enterkeyhint="quiz.isLast ? 'done' : 'next'"
+              :disabled="quiz.submitting"
+              @input="quiz.setText(($event.target as HTMLInputElement).value)"
+            />
+            <p class="text-hint">Регистр и мелкие опечатки не важны</p>
+          </form>
+
+          <div v-else class="options">
             <button
               v-for="(option, i) in quiz.current.question.options"
               :key="option.id"
@@ -167,7 +213,7 @@ async function finish() {
               v-if="!quiz.isLast"
               class="btn"
               type="button"
-              :disabled="!quiz.selectedOptionId"
+              :disabled="!quiz.hasAnswer"
               @click="next"
             >
               Далее
@@ -176,7 +222,7 @@ async function finish() {
               v-else
               class="btn"
               type="button"
-              :disabled="!quiz.selectedOptionId || quiz.submitting"
+              :disabled="!quiz.hasAnswer || quiz.submitting"
               @click="finish"
             >
               <span v-if="quiz.submitting" class="spinner" aria-hidden="true" />
@@ -363,6 +409,42 @@ async function finish() {
   .option.selected {
     animation: rise-in 0.35s var(--ease-out) calc(var(--i, 0) * 45ms) both;
   }
+}
+
+.text-answer {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+
+/* 18px+: iOS не зумит страницу при фокусе в поле */
+.text-input {
+  width: 100%;
+  min-height: 52px;
+  padding: 12px 16px;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: var(--secondary-bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 18px;
+  outline: none;
+  transition: border-color 0.15s ease;
+}
+
+.text-input:focus {
+  border-color: var(--accent);
+}
+
+.text-input::placeholder {
+  color: var(--hint);
+}
+
+.text-hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--hint);
 }
 
 .option:disabled {

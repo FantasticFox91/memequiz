@@ -2,6 +2,8 @@
 definePageMeta({ middleware: 'nickname' });
 
 const quiz = useQuizStore();
+const quizId = useRoute().params.id as string;
+quiz.selectQuiz(quizId);
 
 const loading = ref(false);
 const error = ref<string | null>(null);
@@ -11,12 +13,16 @@ const { share } = useShareResult();
 const shareFeedback = ref<string | null>(null);
 let feedbackTimer: ReturnType<typeof setTimeout> | undefined;
 
+// засчитанный результат ждёт проверки текстовых ответов: баллов ещё нет, делиться нечем
+const pending = computed(() => !!quiz.result?.pending);
+
 // делимся засчитанным результатом: он и в лидерборде
 async function shareResult() {
   const r = quiz.result;
-  if (!r) return;
+  if (!r || r.score === null) return;
   const time = r.durationMs != null ? ` за ${formatDuration(r.durationMs)}` : '';
-  const text = `Мой результат в MemeQuiz: ${r.score} из ${r.total}${time} — «${verdict(r.score, r.total)}» 🧠\nСможешь лучше?`;
+  const title = quiz.quizInfo ? ` (${quiz.quizInfo.title})` : '';
+  const text = `Мой результат в MemeQuiz${title}: ${r.score} из ${r.total}${time} — «${verdict(r.score, r.total)}» 🧠\nСможешь лучше?`;
   const outcome = await share(text);
   if (outcome === 'copied') shareFeedback.value = 'Скопировано, отправь другу ✓';
   else if (outcome === 'failed') shareFeedback.value = 'Не получилось, попробуй ещё раз';
@@ -28,7 +34,8 @@ onBeforeUnmount(() => clearTimeout(feedbackTimer));
 
 // в Telegram главное действие — поделиться: выбор чата нативный и в один тап
 const usesMainButton = useTelegramMainButton(
-  () => (quiz.result && !loading.value ? { text: 'Поделиться результатом' } : null),
+  () =>
+    quiz.result && !pending.value && !loading.value ? { text: 'Поделиться результатом' } : null,
   () => void shareResult(),
 );
 
@@ -37,8 +44,11 @@ async function loadResult() {
   loading.value = true;
   error.value = null;
   try {
-    const completed = await quiz.fetchStatus();
-    if (!completed) await navigateTo('/quiz', { replace: true });
+    const [status] = await Promise.all([
+      quiz.fetchStatus(),
+      quiz.quizzes ? undefined : quiz.loadQuizzes().catch(() => undefined),
+    ]);
+    if (!status.results[quizId]) await navigateTo(`/quiz/${quizId}`, { replace: true });
   } catch (e) {
     error.value = apiErrorMessage(e);
   } finally {
@@ -48,11 +58,12 @@ async function loadResult() {
 
 onMounted(() => {
   if (!quiz.result) void loadResult();
+  else if (!quiz.quizzes) quiz.loadQuizzes().catch(() => undefined);
 });
 
 async function retry() {
   quiz.startPractice();
-  await navigateTo('/quiz');
+  await navigateTo(`/quiz/${quizId}`);
 }
 
 // крупно показываем только что пройденную попытку; засчитанный результат — рядом
@@ -90,11 +101,14 @@ watch(
 );
 onBeforeUnmount(() => cancelAnimationFrame(frame));
 
-const ratio = computed(() => (shown.value?.total ? shown.value.score / shown.value.total : 0));
+const ratio = computed(() =>
+  shown.value?.total && shown.value.score !== null ? shown.value.score / shown.value.total : 0,
+);
 const showConfetti = computed(() => justFinished && !reducedMotion && ratio.value >= 0.7);
 
 onMounted(() => {
-  if (justFinished) haptics.notify(ratio.value >= 0.5 ? 'success' : 'warning');
+  if (!justFinished) return;
+  haptics.notify(shown.value?.score === null || ratio.value >= 0.5 ? 'success' : 'warning');
 });
 
 // разлёт: случайные, но стабильные на время показа
@@ -117,12 +131,21 @@ const countedText = computed(() => {
   return `${r.score} из ${r.total}${time}`;
 });
 
+// звания по доле правильных ответов: <30%, <70%, <90%, остальное
+type Verdicts = [string, string, string, string];
+const VERDICTS: Record<string, Verdicts> = {
+  memes: ['Новичок в мемах', 'Уверенный пользователь', 'Мемолог 80 уровня', 'Легенда мемов'],
+  music: ['Слышу впервые', 'Подпеваю в машине', 'Меломан', 'Ходячий плейлист'],
+};
+const DEFAULT_VERDICTS: Verdicts = ['Новичок', 'Уверенный пользователь', 'Знаток', 'Легенда'];
+
 function verdict(score: number, total: number): string {
   const ratio = total ? score / total : 0;
-  if (ratio < 0.3) return 'Новичок в мемах';
-  if (ratio < 0.7) return 'Уверенный пользователь';
-  if (ratio < 0.9) return 'Мемолог 80 уровня';
-  return 'Легенда мемов';
+  const [low, mid, high, top] = VERDICTS[quizId] ?? DEFAULT_VERDICTS;
+  if (ratio < 0.3) return low;
+  if (ratio < 0.7) return mid;
+  if (ratio < 0.9) return high;
+  return top;
 }
 </script>
 
@@ -135,23 +158,39 @@ function verdict(score: number, total: number): string {
     <ErrorState v-else-if="error" :message="error" @retry="loadResult" />
 
     <template v-else-if="quiz.result && shown">
+      <p v-if="quiz.quizInfo" class="quiz-title rise-in">
+        {{ quiz.quizInfo.emoji }} {{ quiz.quizInfo.title }}
+      </p>
       <p class="hint rise-in">
         {{ quiz.result.nickname }}, {{ quiz.attempt ? 'результат этой попытки' : 'твой результат' }}
       </p>
-      <p class="score" :aria-label="`${shown.score} из ${shown.total}`">
-        {{ displayedScore }} <span class="score-total">из {{ shown.total }}</span>
-      </p>
-      <p v-if="shown.durationMs != null" class="time rise-in" style="--i: 2">
-        за {{ formatDuration(shown.durationMs) }}
-      </p>
-      <h1 class="verdict">{{ verdict(shown.score, shown.total) }}</h1>
+      <!-- текстовые ответы проверяет админ: до проверки баллы не показываем -->
+      <template v-if="shown.score === null">
+        <p class="pending-icon" aria-hidden="true">⏳</p>
+        <h1 class="pending-title">Ваши баллы будут показаны после их проверки</h1>
+        <p class="hint rise-in" style="--i: 2">
+          Ответы проверяют вручную. Результат появится здесь и в лидерборде.
+        </p>
+      </template>
+      <template v-else>
+        <p class="score" :aria-label="`${shown.score} из ${shown.total}`">
+          {{ displayedScore }} <span class="score-total">из {{ shown.total }}</span>
+        </p>
+        <p v-if="shown.durationMs != null" class="time rise-in" style="--i: 2">
+          за {{ formatDuration(shown.durationMs) }}
+        </p>
+        <h1 class="verdict">{{ verdict(shown.score, shown.total) }}</h1>
+      </template>
 
       <p v-if="quiz.isFirst === false" class="note rise-in" style="--i: 8">
-        В зачёт и лидерборд идёт первая попытка: {{ countedText }}.
+        <template v-if="pending"
+          >В зачёт и лидерборд идёт первая попытка, она ещё на проверке.</template
+        >
+        <template v-else>В зачёт и лидерборд идёт первая попытка: {{ countedText }}.</template>
       </p>
 
       <button
-        v-if="!usesMainButton"
+        v-if="!usesMainButton && !pending"
         class="btn rise-in"
         style="--i: 9"
         type="button"
@@ -160,12 +199,19 @@ function verdict(score: number, total: number): string {
       >
         {{ shareFeedback ?? 'Поделиться результатом' }}
       </button>
-      <NuxtLink to="/leaderboard" class="btn btn-secondary rise-in" style="--i: 10">
+      <NuxtLink
+        :to="{ path: '/leaderboard', query: { quiz: quizId } }"
+        class="btn btn-secondary rise-in"
+        style="--i: 10"
+      >
         Лидерборд
       </NuxtLink>
       <button class="btn btn-secondary rise-in" style="--i: 11" type="button" @click="retry">
         Пройти ещё раз для себя
       </button>
+      <NuxtLink to="/" class="btn btn-secondary rise-in" style="--i: 12">
+        Другие викторины
+      </NuxtLink>
 
       <div v-if="showConfetti" class="confetti" aria-hidden="true">
         <span v-for="(piece, i) in confetti" :key="i" :style="piece.style">{{ piece.emoji }}</span>
@@ -196,6 +242,11 @@ function verdict(score: number, total: number): string {
   margin: 0;
 }
 
+.quiz-title {
+  margin: 0;
+  font-weight: 600;
+}
+
 .score {
   margin: 0;
   font-size: 64px;
@@ -209,6 +260,18 @@ function verdict(score: number, total: number): string {
 /* вердикт появляется, когда баллы почти досчитались */
 .verdict {
   animation: pop-in 0.5s var(--ease-spring) 0.7s both;
+}
+
+.pending-icon {
+  margin: 0;
+  font-size: 56px;
+  line-height: 1.1;
+  animation: pop-in 0.5s var(--ease-spring) both;
+}
+
+.pending-title {
+  margin: 8px 0 0;
+  animation: pop-in 0.5s var(--ease-spring) 0.15s both;
 }
 
 .confetti {

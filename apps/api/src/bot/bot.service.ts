@@ -55,11 +55,14 @@ export class BotService implements OnApplicationBootstrap, OnApplicationShutdown
 
     const bot = new Bot(token);
     const keyboard = new InlineKeyboard().webApp(BUTTON_PLAY, webAppUrl);
-    // «Раунд 1. Зверушки» → «Зверушки»
-    const rounds = this.questions.getRounds().map((r) => r.title.replace(/^Раунд\s*\d+\.\s*/i, ''));
+    // черновики в приветствие не попадают
+    const quizzes = this.questions
+      .list()
+      .filter((q) => !q.draft)
+      .map((q) => ({ title: q.title, emoji: q.emoji, total: q.total }));
 
     bot.command('start', (ctx) =>
-      ctx.reply(welcomeText(ctx.from?.first_name ?? 'друг', rounds, this.questions.total), {
+      ctx.reply(welcomeText(ctx.from?.first_name ?? 'друг', quizzes), {
         parse_mode: 'HTML',
         reply_markup: keyboard,
       }),

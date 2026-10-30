@@ -7,7 +7,11 @@ import {
 } from '@memequiz/shared';
 import { PrismaService } from '../prisma/prisma.service';
 
+// текстовый ответ засчитанной попытки; points — оценка автопроверки, уже учтена в score
+export type TextAnswer = { questionId: string; text: string; points: number };
+
 type ResultRow = {
+  quizId: string;
   nickname: string;
   score: number;
   total: number;
@@ -16,9 +20,12 @@ type ResultRow = {
 };
 type ParticipantKey = Pick<Participant, 'source' | 'externalId'>;
 
-const toQuizResult = (row: ResultRow): QuizResult => ({
+// pending — у результата есть непроверенные текстовые ответы: баллы не показываем
+const toQuizResult = (row: ResultRow, pending: boolean): QuizResult => ({
+  quizId: row.quizId,
   nickname: row.nickname,
-  score: row.score,
+  score: pending ? null : row.score,
+  pending,
   total: row.total,
   durationMs: row.durationMs,
   createdAt: row.createdAt.toISOString(),
@@ -30,23 +37,35 @@ const nicknameTaken = () =>
     issues: [{ path: 'nickname', message: 'Этот ник уже занят, выбери другой' }],
   });
 
+const participantWhere = (participant: ParticipantKey) => ({
+  source: participant.source,
+  externalId: participant.externalId,
+});
+
+// число непроверенных текстовых ответов к результату
+const pendingCount = {
+  _count: { select: { textAnswers: { where: { reviewed: false } } } },
+} as const;
+const isPending = (row: { _count: { textAnswers: number } }) => row._count.textAnswers > 0;
+
 @Injectable()
 export class ResultsService {
   constructor(private readonly prisma: PrismaService) {}
 
   /**
-   * Засчитывается только первая попытка; повторные не пишутся, возвращается первый результат.
+   * Засчитывается только первая попытка в каждой викторине; повторные не пишутся, возвращается первый результат.
    * На сайте ник должен быть свободен (409). Ник из Telegram не проверяется: его нельзя сменить.
+   * После первого засчитанного результата ник участника не меняется: в других викторинах пишется он же.
    */
   async saveFirst(
     participant: Participant,
+    quizId: string,
     score: number,
     total: number,
+    textAnswers: readonly TextAnswer[] = [],
   ): Promise<{ result: QuizResult; isFirst: boolean }> {
     const key = nicknameKey(participant.nickname);
-    const where = {
-      source_externalId: { source: participant.source, externalId: participant.externalId },
-    };
+    const where = { source_externalId_quizId: { ...participantWhere(participant), quizId } };
 
     return this.prisma.$transaction(async (tx) => {
       if (participant.source === 'web') {
@@ -54,10 +73,22 @@ export class ResultsService {
         await tx.$queryRaw`SELECT 1 AS ok FROM pg_advisory_xact_lock(hashtext(${key}))`;
       }
 
-      const existing = await tx.result.findUnique({ where });
-      if (existing) return { result: toQuizResult(existing), isFirst: false };
+      const existing = await tx.result.findUnique({ where, include: pendingCount });
+      if (existing) return { result: toQuizResult(existing, isPending(existing)), isFirst: false };
 
-      if (participant.source === 'web' && (await this.isNicknameTaken(key, participant, tx))) {
+      const previous = await tx.result.findFirst({
+        where: participantWhere(participant),
+        orderBy: { createdAt: 'asc' },
+        select: { nickname: true, nicknameKey: true },
+      });
+      const nickname = previous?.nickname ?? participant.nickname;
+      const savedKey = previous?.nicknameKey ?? key;
+
+      if (
+        !previous &&
+        participant.source === 'web' &&
+        (await this.isNicknameTaken(key, participant, tx))
+      ) {
         throw nicknameTaken();
       }
 
@@ -66,19 +97,28 @@ export class ResultsService {
       const durationMs = start ? Math.max(0, Date.now() - start.startedAt.getTime()) : null;
 
       // ON CONFLICT: тот же участник отправил дважды одновременно — вторая вставка ничего не делает
-      const inserted = await tx.$queryRaw<ResultRow[]>`
-        INSERT INTO results (source, external_id, nickname, nickname_key, score, total, duration_ms)
-        VALUES (${participant.source}::"ParticipantSource", ${participant.externalId}, ${participant.nickname}, ${key}, ${score}, ${total}, ${durationMs})
-        ON CONFLICT (source, external_id) DO NOTHING
-        RETURNING nickname, score, total, duration_ms AS "durationMs", created_at AS "createdAt"
+      const inserted = await tx.$queryRaw<(ResultRow & { id: number })[]>`
+        INSERT INTO results (source, external_id, quiz_id, nickname, nickname_key, score, total, duration_ms)
+        VALUES (${participant.source}::"ParticipantSource", ${participant.externalId}, ${quizId}, ${nickname}, ${savedKey}, ${score}, ${total}, ${durationMs})
+        ON CONFLICT (source, external_id, quiz_id) DO NOTHING
+        RETURNING id, quiz_id AS "quizId", nickname, score, total, duration_ms AS "durationMs", created_at AS "createdAt"
       `;
-      if (inserted[0]) return { result: toQuizResult(inserted[0]), isFirst: true };
-
-      const raced = await tx.result.findUnique({ where });
-      if (!raced) {
-        throw new Error(`Result for ${participant.source}:${participant.externalId} vanished`);
+      if (inserted[0]) {
+        if (textAnswers.length > 0) {
+          await tx.textAnswer.createMany({
+            data: textAnswers.map((a) => ({ ...a, resultId: inserted[0].id })),
+          });
+        }
+        return { result: toQuizResult(inserted[0], textAnswers.length > 0), isFirst: true };
       }
-      return { result: toQuizResult(raced), isFirst: false };
+
+      const raced = await tx.result.findUnique({ where, include: pendingCount });
+      if (!raced) {
+        throw new Error(
+          `Result for ${participant.source}:${participant.externalId} in ${quizId} vanished`,
+        );
+      }
+      return { result: toQuizResult(raced, isPending(raced)), isFirst: false };
     });
   }
 
@@ -86,21 +126,29 @@ export class ResultsService {
    * Отметка начала викторины. Пишется только первая: перезапуск или повтор «для себя»
    * таймер засчитанной попытки не сбрасывает.
    */
-  async markStarted(participant: ParticipantKey): Promise<void> {
+  async markStarted(participant: ParticipantKey, quizId: string): Promise<void> {
     await this.prisma.$executeRaw`
-      INSERT INTO quiz_starts (source, external_id)
-      VALUES (${participant.source}::"ParticipantSource", ${participant.externalId})
+      INSERT INTO quiz_starts (source, external_id, quiz_id)
+      VALUES (${participant.source}::"ParticipantSource", ${participant.externalId}, ${quizId})
       ON CONFLICT DO NOTHING
     `;
   }
 
-  async find(participant: ParticipantKey): Promise<QuizResult | null> {
-    const row = await this.prisma.result.findUnique({
-      where: {
-        source_externalId: { source: participant.source, externalId: participant.externalId },
-      },
+  // засчитанные результаты участника по всем викторинам; nickname — ник первого из них
+  async findAll(
+    participant: ParticipantKey,
+  ): Promise<{ nickname: string | null; results: Record<string, QuizResult> }> {
+    const rows = await this.prisma.result.findMany({
+      where: participantWhere(participant),
+      orderBy: { createdAt: 'asc' },
+      include: pendingCount,
     });
-    return row ? toQuizResult(row) : null;
+    return {
+      nickname: rows[0]?.nickname ?? null,
+      results: Object.fromEntries(
+        rows.map((row) => [row.quizId, toQuizResult(row, isPending(row))]),
+      ),
+    };
   }
 
   // 409, если ник на сайте уже у кого-то другого: проверяем до прохождения, а не после
@@ -116,17 +164,16 @@ export class ResultsService {
     db: Pick<PrismaService, 'result'> = this.prisma,
   ): Promise<boolean> {
     const other = await db.result.findFirst({
-      where: {
-        nicknameKey: key,
-        NOT: { source: participant.source, externalId: participant.externalId },
-      },
+      where: { nicknameKey: key, NOT: participantWhere(participant) },
       select: { id: true },
     });
     return !!other;
   }
 
-  async leaderboard(limit: number): Promise<LeaderboardEntry[]> {
+  async leaderboard(quizId: string, limit: number): Promise<LeaderboardEntry[]> {
     const rows = await this.prisma.result.findMany({
+      // результаты с непроверенными текстовыми ответами появятся после проверки
+      where: { quizId, textAnswers: { none: { reviewed: false } } },
       // при равных баллах выше тот, кто быстрее, затем тот, кто раньше
       orderBy: [
         { score: 'desc' },
@@ -135,6 +182,6 @@ export class ResultsService {
       ],
       take: limit,
     });
-    return rows.map((row, i) => ({ ...toQuizResult(row), rank: i + 1 }));
+    return rows.map((row, i) => ({ ...toQuizResult(row, false), rank: i + 1 }));
   }
 }

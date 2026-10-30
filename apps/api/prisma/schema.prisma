@@ -13,12 +13,14 @@ enum ParticipantSource {
   tg
 }
 
-/// Первый (и единственный засчитанный) результат участника.
+/// Первый (и единственный засчитанный) результат участника в викторине.
 /// externalId: web — id из куки mq_pid, tg — Telegram user.id
 model Result {
   id          Int               @id @default(autoincrement())
   source      ParticipantSource
   externalId  String            @map("external_id")
+  /// id викторины = имя файла apps/api/content/quizzes/<id>.json
+  quizId      String            @map("quiz_id")
   nickname    String
   /// nicknameKey() из shared: для проверки, что ник на сайте не занят (lower() в Postgres зависит от локали)
   nicknameKey String            @map("nickname_key")
@@ -29,19 +31,40 @@ model Result {
   createdAt   DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   /// Не используется: выгрузка в Google Sheets (этап 5) отменена. Колонка оставлена, чтобы не делать миграцию
   syncedAt    DateTime?         @map("synced_at") @db.Timestamptz(3)
+  textAnswers TextAnswer[]
 
-  @@unique([source, externalId])
-  @@index([score(sort: Desc), durationMs, createdAt])
+  @@unique([source, externalId, quizId])
+  @@index([quizId, score(sort: Desc), durationMs, createdAt])
   @@index([nicknameKey])
   @@map("results")
+}
+
+/// Текстовые ответы засчитанной попытки для ручной проверки в админке (/admin).
+/// points входит в Result.score: при новой оценке score меняется на разницу.
+/// Пока у результата есть непроверенные ответы, его баллы скрыты и в лидерборде его нет
+model TextAnswer {
+  id         Int     @id @default(autoincrement())
+  resultId   Int     @map("result_id")
+  result     Result  @relation(fields: [resultId], references: [id], onDelete: Cascade)
+  questionId String  @map("question_id")
+  text       String
+  /// 0..2; до проверки — предложение автопроверки по acceptedAnswers
+  points     Int
+  /// true — оценку поставил админ
+  reviewed   Boolean @default(false)
+
+  @@unique([resultId, questionId])
+  @@index([reviewed, questionId])
+  @@map("text_answers")
 }
 
 /// Когда участник впервые открыл викторину. Пишется один раз: перезапуск не сбрасывает таймер
 model QuizStart {
   source     ParticipantSource
   externalId String            @map("external_id")
+  quizId     String            @map("quiz_id")
   startedAt  DateTime          @default(now()) @map("started_at") @db.Timestamptz(3)
 
-  @@id([source, externalId])
+  @@id([source, externalId, quizId])
   @@map("quiz_starts")
 }

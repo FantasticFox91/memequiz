@@ -20,12 +20,11 @@ export class MeController {
     @CurrentParticipant() identity: ParticipantIdentity,
     @Query() query: StatusQueryDto,
   ): Promise<StatusResponse> {
-    const result = await this.results.find(identity);
-    if (result) return { completed: true, result };
-
-    if (identity.source === 'web' && query.nickname) {
+    const status = await this.results.findAll(identity);
+    // ник уже закреплён результатами — проверять нечего
+    if (!status.nickname && identity.source === 'web' && query.nickname) {
       await this.results.assertNicknameFree(withNickname(identity, query.nickname));
     }
-    return { completed: false };
+    return status;
   }
 }

@@ -44,6 +44,8 @@ services:
       TG_INIT_DATA_TTL: ${TG_INIT_DATA_TTL:-86400}
       BOT_ENABLED: ${BOT_ENABLED:-true}
       WEB_APP_URL: https://${SITE_ADDRESS}
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
     depends_on:
       postgres:
         condition: service_healthy

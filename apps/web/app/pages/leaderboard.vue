@@ -2,17 +2,33 @@
 import { type LeaderboardResponse, nicknameKey } from '@memequiz/shared';
 
 const participant = useParticipantStore();
+const quiz = useQuizStore();
 const api = useApi();
+const route = useRoute();
 
 const entries = ref<LeaderboardResponse | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
 
+// вкладки — викторины, кроме черновиков; выбранная — в ?quiz=, чтобы ссылка с результата вела куда надо
+const tabs = computed(() => (quiz.quizzes ?? []).filter((q) => !q.draft));
+const selected = computed(() => {
+  const fromQuery = typeof route.query.quiz === 'string' ? route.query.quiz : null;
+  return tabs.value.find((t) => t.id === fromQuery)?.id ?? tabs.value[0]?.id ?? null;
+});
+
 async function load() {
   loading.value = true;
   error.value = null;
   try {
-    entries.value = await api<LeaderboardResponse>('/leaderboard');
+    if (!quiz.quizzes) await quiz.loadQuizzes();
+    if (!selected.value) {
+      entries.value = [];
+      return;
+    }
+    entries.value = await api<LeaderboardResponse>('/leaderboard', {
+      query: { quiz: selected.value },
+    });
   } catch (e) {
     error.value = apiErrorMessage(e);
   } finally {
@@ -20,7 +36,16 @@ async function load() {
   }
 }
 
+function selectTab(id: string) {
+  if (id === selected.value) return;
+  entries.value = null;
+  void navigateTo({ query: { quiz: id } }, { replace: true });
+}
+
 onMounted(load);
+watch(selected, (next, prev) => {
+  if (prev && next !== prev) void load();
+});
 
 const dateFormat = new Intl.DateTimeFormat('ru-RU', {
   day: 'numeric',
@@ -37,6 +62,21 @@ const isMe = (nickname: string) =>
 <template>
   <section>
     <h1>Лидерборд</h1>
+
+    <div v-if="tabs.length > 1" class="tabs" role="tablist">
+      <button
+        v-for="tab in tabs"
+        :key="tab.id"
+        type="button"
+        role="tab"
+        class="tab"
+        :class="{ active: tab.id === selected }"
+        :aria-selected="tab.id === selected"
+        @click="selectTab(tab.id)"
+      >
+        {{ tab.emoji }} {{ tab.title }}
+      </button>
+    </div>
 
     <div v-if="loading && !entries" class="center">
       <span class="spinner" aria-label="Загрузка" />
@@ -79,6 +119,35 @@ const isMe = (nickname: string) =>
 </template>
 
 <style scoped>
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 3px;
+  margin-bottom: 12px;
+  border-radius: 12px;
+  background: var(--secondary-bg);
+}
+
+.tab {
+  flex: 1;
+  min-height: 40px;
+  padding: 6px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: none;
+  color: var(--hint);
+  font: inherit;
+  font-size: 15px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.tab.active {
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 600;
+}
+
 .center {
   display: flex;
   flex-direction: column;

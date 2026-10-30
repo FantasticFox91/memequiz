@@ -1,0 +1,51 @@
+{
+  "title": "Музыка",
+  "emoji": "🎵",
+  "description": "Угадай песню по фрагменту",
+  "order": 2,
+  "draft": true,
+  "rounds": [
+    {
+      "id": "songs",
+      "title": "Раунд 1. Угадай песню",
+      "description": "Слушай фрагмент и пиши название. 1 балл за исполнителя или название и 2 балла если угадываете и исполнителя и название",
+      "questions": [
+        {
+          "id": "s01",
+          "type": "guess-song",
+          "audio": "/audio/s01.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": ["Восьмиклинка - Ты из другого мира"]
+        },
+        {
+          "id": "s02",
+          "type": "guess-song",
+          "audio": "/audio/s02.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": ["Ваня Дмитриенко, Мальбэк, Сюзанна - Отражение"]
+        },
+        {
+          "id": "s03",
+          "type": "guess-song",
+          "audio": "/audio/s03.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": ["Паша Левл, SODA LUV - Я теряю корни"]
+        },
+        {
+          "id": "s04",
+          "type": "guess-song",
+          "audio": "/audio/s04.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": ["DASHI - План на осень"]
+        },
+        {
+          "id": "s05",
+          "type": "guess-song",
+          "audio": "/audio/s04.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": ["MIA BOYKA - КЛЕОПАТРА"]
+        }
+      ]
+    }
+  ]
+}

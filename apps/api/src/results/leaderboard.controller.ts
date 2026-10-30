@@ -11,6 +11,6 @@ export class LeaderboardController {
 
   @Get()
   leaderboard(@Query() query: LeaderboardQueryDto): Promise<LeaderboardResponse> {
-    return this.results.leaderboard(query.limit);
+    return this.results.leaderboard(query.quiz, query.limit);
   }
 }

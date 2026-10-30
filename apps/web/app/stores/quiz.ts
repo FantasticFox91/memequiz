@@ -1,17 +1,24 @@
-import type {
-  Answer,
-  AttemptScore,
-  PublicQuestion,
-  PublicRound,
-  QuizResponse,
-  QuizResult,
-  StatusResponse,
-  SubmitResponse,
+import {
+  ANSWER_TEXT_MAX,
+  type Answer,
+  type AttemptScore,
+  type PublicQuestion,
+  type PublicRound,
+  type QuizInfo,
+  type QuizResponse,
+  type QuizResult,
+  type QuizzesResponse,
+  type StatusResponse,
+  type SubmitResponse,
 } from '@memequiz/shared';
 import { defineStore } from 'pinia';
 import { useParticipantStore } from './participant';
 
-const PROGRESS_KEY = 'memequiz:progress';
+// прогресс у каждой викторины свой
+const progressKey = (quizId: string) => `memequiz:progress:${quizId}`;
+// до разделения на викторины прогресс был один — это прогресс викторины по мемам
+const LEGACY_PROGRESS_KEY = 'memequiz:progress';
+const LEGACY_QUIZ_ID = 'memes';
 
 // прогресс привязан к нику: другой ник начинает с нуля
 type SavedProgress = {
@@ -33,18 +40,26 @@ export type Attempt = AttemptScore & { durationMs: number };
 export const useQuizStore = defineStore('quiz', () => {
   const participant = useParticipantStore();
 
+  // список викторин для главной и лидерборда
+  const quizzes = ref<QuizInfo[] | null>(null);
+  // викторина, которую сейчас проходят или смотрят результат (из адреса /quiz/:id, /result/:id)
+  const quizId = ref<string | null>(null);
+
   const rounds = ref<PublicRound[] | null>(null);
   const loading = ref(false);
   const loadError = ref<string | null>(null);
 
   const index = ref(0);
-  // questionId → optionId
+  // questionId → optionId, у вопросов без вариантов — введённый текст
   const answers = ref<Record<string, string>>({});
   const introsSeen = ref<string[]>([]);
   const startedAt = ref<number | null>(null);
 
-  // засчитанный (первый) результат
-  const result = ref<QuizResult | null>(null);
+  // засчитанные (первые) результаты по id викторины и ник, закреплённый за участником
+  const results = ref<Record<string, QuizResult>>({});
+  const lockedNickname = ref<string | null>(null);
+  const result = computed(() => (quizId.value ? (results.value[quizId.value] ?? null) : null));
+  const quizInfo = computed(() => quizzes.value?.find((q) => q.id === quizId.value) ?? null);
   const isFirst = ref<boolean | null>(null);
   // баллы и время последней попытки, если она была «для себя» (не первая)
   const attempt = ref<Attempt | null>(null);
@@ -70,9 +85,35 @@ export const useQuizStore = defineStore('quiz', () => {
   const selectedOptionId = computed(() =>
     current.value ? answers.value[current.value.question.id] : undefined,
   );
+  // можно идти дальше: выбран вариант или введён непустой ответ
+  const hasAnswer = computed(() => !!selectedOptionId.value?.trim());
+
+  /**
+   * Выбрать викторину по адресу страницы. Другая викторина — состояние попытки с нуля
+   * (прогресс прошлой остаётся в localStorage и восстановится при возврате).
+   */
+  function selectQuiz(id: string) {
+    if (quizId.value === id) return;
+    quizId.value = id;
+    rounds.value = null;
+    index.value = 0;
+    answers.value = {};
+    introsSeen.value = [];
+    startedAt.value = null;
+    isFirst.value = null;
+    attempt.value = null;
+    practice.value = false;
+    submitError.value = null;
+    loadError.value = null;
+  }
+
+  async function loadQuizzes() {
+    quizzes.value = await useApi()<QuizzesResponse>('/quizzes');
+  }
 
   function saveProgress() {
-    writeStorage(PROGRESS_KEY, {
+    if (!quizId.value) return;
+    writeStorage(progressKey(quizId.value), {
       nicknameKey: participant.nicknameKey,
       index: index.value,
       answers: answers.value,
@@ -87,12 +128,17 @@ export const useQuizStore = defineStore('quiz', () => {
     answers.value = {};
     introsSeen.value = [];
     startedAt.value = null;
-    removeStorage(PROGRESS_KEY);
+    if (quizId.value) removeStorage(progressKey(quizId.value));
   }
 
   // после загрузки вопросов: восстановить прогресс, если он этого участника и ещё подходит к вопросам
   function restoreProgress() {
-    const saved = readStorage<SavedProgress>(PROGRESS_KEY);
+    if (!quizId.value) return;
+    let saved = readStorage<SavedProgress>(progressKey(quizId.value));
+    if (quizId.value === LEGACY_QUIZ_ID) {
+      saved ??= readStorage<SavedProgress>(LEGACY_PROGRESS_KEY);
+      removeStorage(LEGACY_PROGRESS_KEY);
+    }
     if (!saved || saved.nicknameKey !== participant.nicknameKey) {
       resetProgress();
       return;
@@ -100,9 +146,10 @@ export const useQuizStore = defineStore('quiz', () => {
     if (Array.isArray(saved.order)) applyOrder(saved.order);
     const valid: Record<string, string> = {};
     for (const { question } of steps.value) {
-      const optionId = saved.answers?.[question.id];
-      if (optionId && question.options.some((o) => o.id === optionId))
-        valid[question.id] = optionId;
+      const value = saved.answers?.[question.id];
+      if (typeof value !== 'string') continue;
+      if (question.options ? question.options.some((o) => o.id === value) : true)
+        valid[question.id] = value;
     }
     answers.value = valid;
     introsSeen.value = Array.isArray(saved.introsSeen) ? saved.introsSeen : [];
@@ -122,7 +169,8 @@ export const useQuizStore = defineStore('quiz', () => {
   }
 
   async function load() {
-    if (loading.value) return;
+    if (loading.value || !quizId.value) return;
+    const id = quizId.value;
     loading.value = true;
     loadError.value = null;
     try {
@@ -130,9 +178,12 @@ export const useQuizStore = defineStore('quiz', () => {
       // отметка старта для времени засчитанной попытки; сервер пишет только первую.
       // Не дошла — результат запишется без времени, викторину это не блокирует
       const [quiz] = await Promise.all([
-        api<QuizResponse>('/quiz'),
-        api('/quiz/start', { method: 'POST' }).catch(() => undefined),
+        api<QuizResponse>(`/quiz/${id}`),
+        api(`/quiz/${id}/start`, { method: 'POST' }).catch(() => undefined),
+        quizzes.value ? undefined : loadQuizzes().catch(() => undefined),
       ]);
+      // пока грузилось, ушли в другую викторину
+      if (quizId.value !== id) return;
       rounds.value = quiz;
       restoreProgress();
       if (startedAt.value === null) startedAt.value = Date.now();
@@ -157,35 +208,46 @@ export const useQuizStore = defineStore('quiz', () => {
     saveProgress();
   }
 
+  function setText(text: string) {
+    if (!current.value || submitting.value) return;
+    answers.value = {
+      ...answers.value,
+      [current.value.question.id]: text.slice(0, ANSWER_TEXT_MAX),
+    };
+    saveProgress();
+  }
+
   function next() {
-    if (!selectedOptionId.value || isLast.value) return;
+    if (!hasAnswer.value || isLast.value) return;
     index.value++;
     saveProgress();
   }
 
   function setResult(value: QuizResult, first: boolean, attemptValue: Attempt | null = null) {
-    result.value = value;
+    results.value = { ...results.value, [value.quizId]: value };
+    lockedNickname.value ??= value.nickname;
     isFirst.value = first;
     attempt.value = attemptValue;
   }
 
   function clearResult() {
-    result.value = null;
+    results.value = {};
+    lockedNickname.value = null;
     isFirst.value = null;
     attempt.value = null;
   }
 
   /**
-   * Проходил ли участник раньше (участника сервер знает по куке или initData);
-   * если да — его первый результат попадает в store.
-   * nickname (сайт): заодно проверить, что ник свободен, — иначе ошибка 409.
+   * Засчитанные результаты участника по всем викторинам (участника сервер знает по куке или initData)
+   * и закреплённый за ним ник. nickname (сайт): заодно проверить, что ник свободен, — иначе ошибка 409.
    */
-  async function fetchStatus(nickname?: string): Promise<boolean> {
+  async function fetchStatus(nickname?: string): Promise<StatusResponse> {
     const status = await useApi()<StatusResponse>('/me/status', {
       query: nickname ? { nickname } : undefined,
     });
-    if (status.completed) setResult(status.result, false);
-    return status.completed;
+    results.value = status.results;
+    lockedNickname.value = status.nickname;
+    return status;
   }
 
   // пройти ещё раз «для себя»: в зачёт идёт только первый результат
@@ -198,19 +260,24 @@ export const useQuizStore = defineStore('quiz', () => {
 
   // все ответы одним запросом; повторный вызов во время отправки игнорируется
   async function submit(): Promise<boolean> {
-    if (submitting.value) return false;
+    if (submitting.value || !quizId.value) return false;
     submitting.value = true;
     submitError.value = null;
     try {
       const body = {
         // в Telegram ник берётся сервером из профиля
         nickname: useTelegram().isTelegram ? undefined : participant.nickname,
-        answers: steps.value.map(({ question }): Answer => ({
-          questionId: question.id,
-          optionId: answers.value[question.id] ?? '',
-        })),
+        answers: steps.value.map(({ question }): Answer => {
+          const value = answers.value[question.id] ?? '';
+          return question.options
+            ? { questionId: question.id, optionId: value }
+            : { questionId: question.id, text: value.trim() };
+        }),
       };
-      const response = await useApi()<SubmitResponse>('/quiz/submit', { method: 'POST', body });
+      const response = await useApi()<SubmitResponse>(`/quiz/${quizId.value}/submit`, {
+        method: 'POST',
+        body,
+      });
       const durationMs = startedAt.value === null ? 0 : Date.now() - startedAt.value;
       setResult(
         response.result,
@@ -232,6 +299,11 @@ export const useQuizStore = defineStore('quiz', () => {
   }
 
   return {
+    quizzes,
+    quizId,
+    quizInfo,
+    results,
+    lockedNickname,
     rounds,
     loading,
     loadError,
@@ -249,9 +321,13 @@ export const useQuizStore = defineStore('quiz', () => {
     isLast,
     showIntro,
     selectedOptionId,
+    hasAnswer,
+    selectQuiz,
+    loadQuizzes,
     load,
     startRound,
     select,
+    setText,
     next,
     setResult,
     clearResult,

@@ -11,14 +11,19 @@ export const DESCRIPTION =
 // профиль бота и превью при пересылке ссылки, до 120 символов
 export const SHORT_DESCRIPTION = 'Викторина по мемам: проверь, насколько ты в теме 🧠';
 
-export function welcomeText(name: string, rounds: readonly string[], total: number): string {
+export type WelcomeQuiz = { title: string; emoji?: string; total: number };
+
+export function welcomeText(name: string, quizzes: readonly WelcomeQuiz[]): string {
   return [
     `Привет, <b>${escapeHtml(name)}</b>! 👋`,
     '',
-    'Это <b>MemeQuiz</b> — викторина для тех, кто слишком много сидит в мемах.',
+    'Это <b>MemeQuiz</b> — викторины для тех, кто слишком много сидит в интернете.',
     '',
-    `🧩 ${total} ${plural(total, 'вопрос', 'вопроса', 'вопросов')} в ${rounds.length} ${plural(rounds.length, 'раунде', 'раундах', 'раундах')}:`,
-    ...rounds.map((title) => `   • ${escapeHtml(title)}`),
+    '🧩 Выбирай викторину:',
+    ...quizzes.map(
+      (q) =>
+        `   ${q.emoji ?? '•'} ${escapeHtml(q.title)} — ${q.total} ${plural(q.total, 'вопрос', 'вопроса', 'вопросов')}`,
+    ),
     '',
     '⏱ Время тоже считается, так что не тормози',
     '🏆 В зачёт идёт только первая попытка, потом можно перепроходить для себя',

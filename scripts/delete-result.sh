@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Удалить результат из лидерборда. Запуск на сервере из /opt/memequiz:
 #   scripts/delete-result.sh --list            последние 30 результатов с id
-#   scripts/delete-result.sh "Ник"             по нику, как он написан в лидерборде
+#   scripts/delete-result.sh "Ник"             по нику, как он написан в лидерборде (во всех викторинах)
 #   scripts/delete-result.sh --id 42           по id из --list
 # Перед удалением показывает запись и спрашивает подтверждение.
-# Вместе с результатом удаляется отметка старта: участник сможет пройти заново, и время посчитается с нуля.
+# Вместе с результатом удаляются отметка старта этой викторины и текстовые ответы:
+# участник сможет пройти её заново, и время посчитается с нуля.
 # Перед массовыми чистками сделайте бэкап: scripts/backup.sh
 set -euo pipefail
 
@@ -15,7 +16,7 @@ psql_run() {
   docker compose exec -T postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 "$@"' psql "$@"
 }
 
-COLUMNS_SQL="id, source, nickname, score || '/' || total AS score, to_char(created_at AT TIME ZONE 'Europe/Moscow', 'DD.MM HH24:MI') AS created"
+COLUMNS_SQL="id, quiz_id AS quiz, source, nickname, score || '/' || total AS score, to_char(created_at AT TIME ZONE 'Europe/Moscow', 'DD.MM HH24:MI') AS created"
 
 case "${1:-}" in
   --list)
@@ -30,7 +31,7 @@ SQL
     WHERE="id = :id"
     ;;
   "" | -h | --help)
-    sed -n '2,8p' "$0" | sed 's/^# \{0,1\}//'
+    sed -n '2,9p' "$0" | sed 's/^# \{0,1\}//'
     exit 1
     ;;
   *)
@@ -58,7 +59,7 @@ read -r -p "Удалить ($found шт.)? [y/N] " answer
 psql_run "${VARS[@]}" <<SQL
 BEGIN;
 DELETE FROM quiz_starts s USING results r
-  WHERE r.source = s.source AND r.external_id = s.external_id AND r.$WHERE;
+  WHERE r.source = s.source AND r.external_id = s.external_id AND r.quiz_id = s.quiz_id AND r.$WHERE;
 DELETE FROM results WHERE $WHERE;
 COMMIT;
 SQL

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
+import { AdminModule } from './admin/admin.module';
 import { BotModule } from './bot/bot.module';
 import { THROTTLERS } from './common/throttling';
 import { validateEnv } from './config/env';
@@ -22,6 +23,7 @@ import { QuizModule } from './quiz/quiz.module';
     HealthModule,
     QuizModule,
     BotModule,
+    AdminModule,
     ThrottlerModule.forRoot({ throttlers: THROTTLERS, errorMessage: 'Слишком много запросов' }),
   ],
   // порядок важен: лимит по участнику берёт telegramUser, который ставит TelegramAuthGuard
