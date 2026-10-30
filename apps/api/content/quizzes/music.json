@@ -3,7 +3,6 @@
   "emoji": "🎵",
   "description": "Угадай песню по фрагменту",
   "order": 2,
-  "draft": true,
   "rounds": [
     {
       "id": "songs",
