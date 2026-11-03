@@ -176,10 +176,12 @@ export const useQuizStore = defineStore('quiz', () => {
     try {
       const api = useApi();
       // отметка старта для времени засчитанной попытки; сервер пишет только первую.
-      // Не дошла — результат запишется без времени, викторину это не блокирует
+      // Не дошла — результат запишется без времени, викторину это не блокирует.
+      // До вопросов, а не параллельно: новому посетителю сайта она выдаёт куку участника,
+      // а от участника зависит набор вопросов (pick) — иначе два запроса получат разные куки
+      await api(`/quiz/${id}/start`, { method: 'POST' }).catch(() => undefined);
       const [quiz] = await Promise.all([
         api<QuizResponse>(`/quiz/${id}`),
-        api(`/quiz/${id}/start`, { method: 'POST' }).catch(() => undefined),
         quizzes.value ? undefined : loadQuizzes().catch(() => undefined),
       ]);
       // пока грузилось, ушли в другую викторину

@@ -1,13 +1,17 @@
 <script setup lang="ts">
 /**
- * Админка: ручная проверка текстовых ответов. Одинаковые (после normalizeAnswer) ответы
- * разных участников собраны в одну строку, вердикт ставится всем сразу.
+ * Админка: ручная проверка текстовых ответов. Два вида:
+ * - по вопросам: одинаковые (после normalizeAnswer) ответы разных участников собраны в одну строку,
+ *   вердикт ставится всем сразу;
+ * - по участникам: все ответы одного участника, вердикт — каждому ответу отдельно.
  * Вход по ADMIN_USERNAME / ADMIN_PASSWORD api; сессия — HttpOnly-кука, JS её не видит.
  */
 import {
   type AdminAnswer,
   type AdminAnswersResponse,
   type AdminLoginRequest,
+  type AdminParticipantResult,
+  type AdminParticipantsResponse,
   type AdminVerdictRequest,
   normalizeAnswer,
 } from '@memequiz/shared';
@@ -17,6 +21,8 @@ useHead({ title: 'Админка — MemeQuiz', meta: [{ name: 'robots', content
 const NICKNAMES_SHOWN = 5;
 
 type Filter = 'pending' | 'all';
+type View = 'questions' | 'participants';
+type ParticipantAnswer = AdminParticipantResult['answers'][number];
 type Group = {
   key: string;
   text: string;
@@ -37,12 +43,17 @@ const password = ref('');
 const loggingIn = ref(false);
 const loginError = ref<string | null>(null);
 
+const view = ref<View>('questions');
 const filter = ref<Filter>('pending');
 const data = ref<AdminAnswersResponse | null>(null);
+const people = ref<AdminParticipantsResponse | null>(null);
+const search = ref('');
 const loading = ref(false);
 const error = ref<string | null>(null);
-// ключи групп, по которым идёт запрос вердикта
+// ключи групп и ответов, по которым идёт запрос вердикта
 const busy = ref(new Set<string>());
+// данные текущего вида
+const loaded = computed(() => (view.value === 'questions' ? data.value : people.value));
 
 // кука сессии same-origin: уходит сама, заголовки не нужны
 const api = $fetch.create({ baseURL: apiBase });
@@ -55,6 +66,7 @@ function handleAuthError(e: unknown): boolean {
   if (status !== 401 && status !== 404) return false;
   authed.value = false;
   data.value = null;
+  people.value = null;
   loginError.value = status === 404 ? DISABLED_TEXT : null;
   return true;
 }
@@ -63,9 +75,12 @@ async function load() {
   loading.value = true;
   error.value = null;
   try {
-    data.value = await api<AdminAnswersResponse>('/admin/answers', {
-      query: { filter: filter.value },
-    });
+    const query = { filter: filter.value };
+    if (view.value === 'questions') {
+      data.value = await api<AdminAnswersResponse>('/admin/answers', { query });
+    } else {
+      people.value = await api<AdminParticipantsResponse>('/admin/participants', { query });
+    }
     authed.value = true;
   } catch (e) {
     if (!handleAuthError(e)) {
@@ -101,19 +116,29 @@ async function logout() {
   await api('/admin/logout', { method: 'POST' }).catch(() => undefined);
   authed.value = false;
   data.value = null;
+  people.value = null;
 }
 
-async function setVerdict(group: Group, points: number) {
-  if (busy.value.has(group.key)) return;
+// key — группа (вид по вопросам) или отдельный ответ (вид по участникам)
+async function setVerdict(key: string, answerIds: number[], points: number) {
+  if (busy.value.has(key)) return;
   haptics.impact('light');
-  busy.value = new Set(busy.value).add(group.key);
+  busy.value = new Set(busy.value).add(key);
   try {
-    const body: AdminVerdictRequest = { ids: group.ids, points };
+    const body: AdminVerdictRequest = { ids: answerIds, points };
     await api('/admin/answers/verdict', { method: 'POST', body });
     // остаётся на экране и в «Непроверенных» до обновления: промах можно сразу исправить
-    const ids = new Set(group.ids);
+    const ids = new Set(answerIds);
     for (const answer of data.value?.answers ?? []) {
       if (ids.has(answer.id)) Object.assign(answer, { points, reviewed: true });
+    }
+    for (const result of people.value?.results ?? []) {
+      for (const answer of result.answers) {
+        if (!ids.has(answer.id)) continue;
+        // сервер меняет баллы участника на разницу — показываем то же
+        result.score += points - answer.points;
+        Object.assign(answer, { points, reviewed: true });
+      }
     }
   } catch (e) {
     if (!handleAuthError(e)) {
@@ -122,7 +147,7 @@ async function setVerdict(group: Group, points: number) {
     }
   } finally {
     const next = new Set(busy.value);
-    next.delete(group.key);
+    next.delete(key);
     busy.value = next;
   }
 }
@@ -179,7 +204,46 @@ const sections = computed(() => {
     .filter((s) => s.groups.length > 0 || filter.value === 'all');
 });
 
-const pendingCount = computed(() => data.value?.answers.filter((a) => !a.reviewed).length ?? 0);
+const pendingCount = computed(() => {
+  const answers =
+    view.value === 'questions'
+      ? (data.value?.answers ?? [])
+      : (people.value?.results.flatMap((r) => r.answers) ?? []);
+  return answers.filter((a) => !a.reviewed).length;
+});
+
+// --- вид по участникам ---
+
+const questionByKey = computed(
+  () => new Map((people.value?.questions ?? []).map((q) => [`${q.quizId}:${q.id}`, q])),
+);
+const quizTitle = (quizId: string) =>
+  people.value?.questions.find((q) => q.quizId === quizId)?.quizTitle ?? quizId;
+
+const shownResults = computed(() => {
+  const needle = normalizeAnswer(search.value);
+  const results = people.value?.results ?? [];
+  return needle ? results.filter((r) => normalizeAnswer(r.nickname).includes(needle)) : results;
+});
+
+const pendingOf = (result: AdminParticipantResult) =>
+  result.answers.filter((a) => !a.reviewed).length;
+
+function answerStatus(answer: ParticipantAnswer) {
+  if (!answer.reviewed) return `не проверен · авто ${answer.points ? `+${answer.points}` : '0'}`;
+  return answer.points ? `+${answer.points}` : 'отклонён';
+}
+
+function answerTone(answer: ParticipantAnswer) {
+  if (!answer.reviewed) return null;
+  return VERDICTS.find((v) => v.points === answer.points)?.tone ?? null;
+}
+
+function formatDuration(ms: number | null) {
+  if (ms === null) return null;
+  const seconds = Math.round(ms / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
 
 // кнопки оценки: +2 — угадано, +1 — частично (например, только исполнитель), 0 — нет
 const VERDICTS = [
@@ -205,7 +269,7 @@ function nicknamesLabel(nicknames: string[]) {
   return rest > 0 ? `${shown} и ещё ${rest}` : shown;
 }
 
-watch(filter, load);
+watch([filter, view], load);
 onMounted(load);
 </script>
 
@@ -248,6 +312,24 @@ onMounted(load);
         <button class="link" type="button" @click="logout">Выйти</button>
       </div>
 
+      <div class="tabs views" role="tablist" aria-label="Вид">
+        <button
+          v-for="tab in [
+            { id: 'questions', label: 'По вопросам' },
+            { id: 'participants', label: 'По участникам' },
+          ] as const"
+          :key="tab.id"
+          type="button"
+          role="tab"
+          class="tab"
+          :class="{ active: view === tab.id }"
+          :aria-selected="view === tab.id"
+          @click="view = tab.id"
+        >
+          {{ tab.label }}
+        </button>
+      </div>
+
       <div class="toolbar">
         <div class="tabs" role="tablist">
           <button
@@ -275,13 +357,104 @@ onMounted(load);
         <code>acceptedAnswers</code> — автопроверка будет сразу предлагать +2.
       </p>
 
-      <div v-if="loading && !data" class="center">
+      <div v-if="loading && !loaded" class="center">
         <span class="spinner" aria-label="Загрузка" />
       </div>
 
-      <ErrorState v-else-if="error && !data" :message="error" @retry="load" />
+      <ErrorState v-else-if="error && !loaded" :message="error" @retry="load" />
 
-      <template v-else-if="data">
+      <template v-else-if="view === 'participants' && people">
+        <p v-if="error" class="error-text">{{ error }}</p>
+        <p class="hint">
+          Участников: {{ people.results.length }}
+          <template v-if="filter === 'pending'"> · ждут проверки ответов: {{ pendingCount }}</template>
+        </p>
+
+        <input
+          v-model="search"
+          class="field"
+          type="search"
+          placeholder="Поиск по нику"
+          aria-label="Поиск по нику"
+          autocapitalize="off"
+          spellcheck="false"
+        />
+
+        <p v-if="shownResults.length === 0" class="hint center">
+          {{
+            search
+              ? 'Никого не нашли'
+              : filter === 'pending'
+                ? 'Всё проверено 🎉'
+                : 'Результатов пока нет'
+          }}
+        </p>
+
+        <details
+          v-for="result in shownResults"
+          :key="result.id"
+          class="card person"
+          :open="shownResults.length === 1"
+        >
+          <summary class="person-head">
+            <span class="person-name">
+              {{ result.nickname }}
+              <span v-if="result.source === 'tg'" class="count">Telegram</span>
+            </span>
+            <span class="meta">
+              {{ quizTitle(result.quizId) }} · {{ result.score }} из {{ result.total }}
+              <template v-if="formatDuration(result.durationMs)">
+                · {{ formatDuration(result.durationMs) }}
+              </template>
+              <template v-if="pendingOf(result)">
+                · <span class="pending">не проверено: {{ pendingOf(result) }}</span>
+              </template>
+            </span>
+          </summary>
+
+          <p v-if="result.answers.length === 0" class="hint">Нет ответов с вводом текста</p>
+
+          <ul class="groups">
+            <li
+              v-for="answer in result.answers"
+              :key="answer.id"
+              class="group"
+              :class="[answerTone(answer), { reviewed: answer.reviewed }]"
+            >
+              <div class="group-body">
+                <p class="meta">
+                  {{ answer.questionId }} ·
+                  {{
+                    questionByKey
+                      .get(`${result.quizId}:${answer.questionId}`)
+                      ?.acceptedAnswers.join(' / ') ?? 'вопрос удалён из файла'
+                  }}
+                </p>
+                <p class="answer">{{ answer.text || '—' }}</p>
+                <p class="meta">
+                  <span class="status">{{ answerStatus(answer) }}</span>
+                </p>
+              </div>
+              <div class="actions">
+                <button
+                  v-for="v in VERDICTS"
+                  :key="v.points"
+                  type="button"
+                  class="verdict"
+                  :class="[v.tone, { on: answer.reviewed && answer.points === v.points }]"
+                  :disabled="busy.has(`answer:${answer.id}`)"
+                  :aria-label="v.aria"
+                  @click="setVerdict(`answer:${answer.id}`, [answer.id], v.points)"
+                >
+                  {{ v.label }}
+                </button>
+              </div>
+            </li>
+          </ul>
+        </details>
+      </template>
+
+      <template v-else-if="view === 'questions' && data">
         <p v-if="error" class="error-text">{{ error }}</p>
         <p v-if="filter === 'pending'" class="hint">Ждут проверки: {{ pendingCount }}</p>
 
@@ -334,7 +507,7 @@ onMounted(load);
                   :class="[v.tone, { on: group.reviewed && group.points === v.points }]"
                   :disabled="busy.has(group.key)"
                   :aria-label="v.aria"
-                  @click="setVerdict(group, v.points)"
+                  @click="setVerdict(group.key, group.ids, v.points)"
                 >
                   {{ v.label }}
                 </button>
@@ -425,6 +598,32 @@ onMounted(load);
 .tab.active {
   background: var(--bg);
   color: var(--text);
+  font-weight: 600;
+}
+
+.views {
+  align-self: stretch;
+}
+
+.views .tab {
+  flex: 1;
+}
+
+.person-head {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  cursor: pointer;
+}
+
+.person-name {
+  font-size: 17px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.pending {
+  color: var(--warning);
   font-weight: 600;
 }
 

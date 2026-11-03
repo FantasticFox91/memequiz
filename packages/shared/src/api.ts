@@ -114,28 +114,52 @@ export const adminAnswersQuerySchema = z.object({
   filter: z.enum(['pending', 'all']).default('pending'),
 });
 
+const adminQuestionSchema = z.object({
+  quizId: z.string(),
+  quizTitle: z.string(),
+  id: z.string(),
+  roundTitle: z.string(),
+  text: z.string(),
+  acceptedAnswers: z.array(z.string()),
+});
+
+const adminAnswerBaseSchema = z.object({
+  id: z.int(),
+  questionId: z.string(),
+  text: z.string(),
+  // до проверки — предложение автопроверки
+  points: textAnswerPointsSchema,
+  reviewed: z.boolean(),
+});
+
 // вопросы с вводом текста в порядке файла; answers — только засчитанные попытки
 export const adminAnswersResponseSchema = z.object({
-  questions: z.array(
-    z.object({
+  questions: z.array(adminQuestionSchema),
+  answers: z.array(
+    adminAnswerBaseSchema.extend({
       quizId: z.string(),
-      quizTitle: z.string(),
-      id: z.string(),
-      roundTitle: z.string(),
-      text: z.string(),
-      acceptedAnswers: z.array(z.string()),
+      nickname: z.string(),
     }),
   ),
-  answers: z.array(
+});
+
+// GET /api/admin/participants?filter=pending|all — засчитанные результаты по участникам, свежие сверху.
+// pending: только результаты с непроверенными ответами (но с полным списком их ответов).
+// answers — текстовые ответы участника в порядке вопросов в файле
+export const adminParticipantsResponseSchema = z.object({
+  questions: z.array(adminQuestionSchema),
+  results: z.array(
     z.object({
       id: z.int(),
       quizId: z.string(),
-      questionId: z.string(),
-      text: z.string(),
       nickname: z.string(),
-      // до проверки — предложение автопроверки
-      points: textAnswerPointsSchema,
-      reviewed: z.boolean(),
+      source: z.enum(['web', 'tg']),
+      // текущие баллы с учётом ручных оценок
+      score: z.int(),
+      total: z.int(),
+      durationMs: z.int().nullable(),
+      createdAt: z.iso.datetime(),
+      answers: z.array(adminAnswerBaseSchema),
     }),
   ),
 });
@@ -151,6 +175,8 @@ export type AdminLoginRequest = z.infer<typeof adminLoginRequestSchema>;
 export type AdminAnswersQuery = z.infer<typeof adminAnswersQuerySchema>;
 export type AdminAnswersResponse = z.infer<typeof adminAnswersResponseSchema>;
 export type AdminAnswer = AdminAnswersResponse['answers'][number];
+export type AdminParticipantsResponse = z.infer<typeof adminParticipantsResponseSchema>;
+export type AdminParticipantResult = AdminParticipantsResponse['results'][number];
 export type AdminVerdictRequest = z.infer<typeof adminVerdictRequestSchema>;
 
 export type QuizzesResponse = z.infer<typeof quizzesResponseSchema>;

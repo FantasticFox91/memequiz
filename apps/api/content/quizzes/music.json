@@ -8,41 +8,484 @@
       "id": "songs",
       "title": "Раунд 1. Угадай песню",
       "description": "Слушай фрагмент и пиши название. 1 балл за исполнителя или название и 2 балла если угадываете и исполнителя и название",
+      "pick": 15,
       "questions": [
         {
           "id": "s01",
           "type": "guess-song",
           "audio": "/audio/s01.mp3",
           "text": "Что за песня?",
-          "acceptedAnswers": ["Восьмиклинка - Ты из другого мира"]
+          "acceptedAnswers": [
+            "Aleks Ataman & Finik.Finya - Девочка Бандитка"
+          ]
         },
         {
           "id": "s02",
           "type": "guess-song",
           "audio": "/audio/s02.mp3",
           "text": "Что за песня?",
-          "acceptedAnswers": ["Ваня Дмитриенко, Мальбэк, Сюзанна - Отражение"]
+          "acceptedAnswers": [
+            "Anacondaz - Круглый год"
+          ]
         },
         {
           "id": "s03",
           "type": "guess-song",
           "audio": "/audio/s03.mp3",
           "text": "Что за песня?",
-          "acceptedAnswers": ["Паша Левл, SODA LUV - Я теряю корни"]
+          "acceptedAnswers": [
+            "Bon Jovi - It's My Life"
+          ]
         },
         {
           "id": "s04",
           "type": "guess-song",
           "audio": "/audio/s04.mp3",
           "text": "Что за песня?",
-          "acceptedAnswers": ["DASHI - План на осень"]
+          "acceptedAnswers": [
+            "Drezden - Эдельвейс"
+          ]
         },
         {
           "id": "s05",
           "type": "guess-song",
-          "audio": "/audio/s04.mp3",
+          "audio": "/audio/s05.mp3",
           "text": "Что за песня?",
-          "acceptedAnswers": ["MIA BOYKA - КЛЕОПАТРА"]
+          "acceptedAnswers": [
+            "Evanescence - My Immortal"
+          ]
+        },
+        {
+          "id": "s06",
+          "type": "guess-song",
+          "audio": "/audio/s06.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Kamazz - Без эмоций"
+          ]
+        },
+        {
+          "id": "s07",
+          "type": "guess-song",
+          "audio": "/audio/s07.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Linkin Park - Numb"
+          ]
+        },
+        {
+          "id": "s08",
+          "type": "guess-song",
+          "audio": "/audio/s08.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Macan - Без названия"
+          ]
+        },
+        {
+          "id": "s09",
+          "type": "guess-song",
+          "audio": "/audio/s09.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Mia Boyka - Экспонат"
+          ]
+        },
+        {
+          "id": "s10",
+          "type": "guess-song",
+          "audio": "/audio/s10.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "MiyaGi & Эндшпиль - Люби меня"
+          ]
+        },
+        {
+          "id": "s11",
+          "type": "guess-song",
+          "audio": "/audio/s11.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Noize MC - Выдыхай"
+          ]
+        },
+        {
+          "id": "s12",
+          "type": "guess-song",
+          "audio": "/audio/s12.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Obraza Net - Кабинет психолога"
+          ]
+        },
+        {
+          "id": "s13",
+          "type": "guess-song",
+          "audio": "/audio/s13.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Pink - Try"
+          ]
+        },
+        {
+          "id": "s14",
+          "type": "guess-song",
+          "audio": "/audio/s14.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Polina Gagarina - Кукушка"
+          ]
+        },
+        {
+          "id": "s15",
+          "type": "guess-song",
+          "audio": "/audio/s15.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Quest Pistols - Я твой наркотик"
+          ]
+        },
+        {
+          "id": "s16",
+          "type": "guess-song",
+          "audio": "/audio/s16.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Scooter - How Much Is The Fish"
+          ]
+        },
+        {
+          "id": "s17",
+          "type": "guess-song",
+          "audio": "/audio/s17.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "The Hatters - Время пришло"
+          ]
+        },
+        {
+          "id": "s18",
+          "type": "guess-song",
+          "audio": "/audio/s18.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "The Weeknd - Blinding Lights"
+          ]
+        },
+        {
+          "id": "s19",
+          "type": "guess-song",
+          "audio": "/audio/s19.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Zivert - GAZ"
+          ]
+        },
+        {
+          "id": "s20",
+          "type": "guess-song",
+          "audio": "/audio/s20.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Bearwolf - Феникс"
+          ]
+        },
+        {
+          "id": "s21",
+          "type": "guess-song",
+          "audio": "/audio/s21.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Linkin Park - In The End"
+          ]
+        },
+        {
+          "id": "s22",
+          "type": "guess-song",
+          "audio": "/audio/s22.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Michael Jackson - Earth Song"
+          ]
+        },
+        {
+          "id": "s23",
+          "type": "guess-song",
+          "audio": "/audio/s23.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Агутин и Пресняков - Аэропорты"
+          ]
+        },
+        {
+          "id": "s24",
+          "type": "guess-song",
+          "audio": "/audio/s24.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Аня из Питера - Голубые глаза"
+          ]
+        },
+        {
+          "id": "s25",
+          "type": "guess-song",
+          "audio": "/audio/s25.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Ария - Осколок льда"
+          ]
+        },
+        {
+          "id": "s26",
+          "type": "guess-song",
+          "audio": "/audio/s26.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Бумбокс - Вахтерам"
+          ]
+        },
+        {
+          "id": "s27",
+          "type": "guess-song",
+          "audio": "/audio/s27.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Виктор Цой - Мама Анархия"
+          ]
+        },
+        {
+          "id": "s28",
+          "type": "guess-song",
+          "audio": "/audio/s28.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Воровайки - Не воровка, не шалава"
+          ]
+        },
+        {
+          "id": "s29",
+          "type": "guess-song",
+          "audio": "/audio/s29.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Григорий Лепс - Самый лучший день"
+          ]
+        },
+        {
+          "id": "s30",
+          "type": "guess-song",
+          "audio": "/audio/s30.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Демо - Солнышко в руках"
+          ]
+        },
+        {
+          "id": "s31",
+          "type": "guess-song",
+          "audio": "/audio/s31.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Елка - Около тебя"
+          ]
+        },
+        {
+          "id": "s32",
+          "type": "guess-song",
+          "audio": "/audio/s32.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Еретик - Железо внутри"
+          ]
+        },
+        {
+          "id": "s33",
+          "type": "guess-song",
+          "audio": "/audio/s33.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Жуки - Батарейка"
+          ]
+        },
+        {
+          "id": "s34",
+          "type": "guess-song",
+          "audio": "/audio/s34.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Звери - Дожди-пистолеты"
+          ]
+        },
+        {
+          "id": "s35",
+          "type": "guess-song",
+          "audio": "/audio/s35.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Каста - Вокруг шум"
+          ]
+        },
+        {
+          "id": "s36",
+          "type": "guess-song",
+          "audio": "/audio/s36.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Кино - Кукушка"
+          ]
+        },
+        {
+          "id": "s37",
+          "type": "guess-song",
+          "audio": "/audio/s37.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Кипелов - Я свободен"
+          ]
+        },
+        {
+          "id": "s38",
+          "type": "guess-song",
+          "audio": "/audio/s38.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Король и Шут - Кукла колдуна"
+          ]
+        },
+        {
+          "id": "s39",
+          "type": "guess-song",
+          "audio": "/audio/s39.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Меладзе - Тропикана-женщина"
+          ]
+        },
+        {
+          "id": "s40",
+          "type": "guess-song",
+          "audio": "/audio/s40.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Михаил Гребенщиков - Хочешь закурить"
+          ]
+        },
+        {
+          "id": "s41",
+          "type": "guess-song",
+          "audio": "/audio/s41.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Монеточка - Переживу"
+          ]
+        },
+        {
+          "id": "s42",
+          "type": "guess-song",
+          "audio": "/audio/s42.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Наутилус Помпилиус - Князь тишины"
+          ]
+        },
+        {
+          "id": "s43",
+          "type": "guess-song",
+          "audio": "/audio/s43.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Непара - Другая причина"
+          ]
+        },
+        {
+          "id": "s44",
+          "type": "guess-song",
+          "audio": "/audio/s44.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Нервы - Нервы"
+          ]
+        },
+        {
+          "id": "s45",
+          "type": "guess-song",
+          "audio": "/audio/s45.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Нигатив - Времени нет"
+          ]
+        },
+        {
+          "id": "s46",
+          "type": "guess-song",
+          "audio": "/audio/s46.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Пицца - Лифт"
+          ]
+        },
+        {
+          "id": "s47",
+          "type": "guess-song",
+          "audio": "/audio/s47.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Порнофильмы - Я так боюсь"
+          ]
+        },
+        {
+          "id": "s48",
+          "type": "guess-song",
+          "audio": "/audio/s48.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Рок-Острова - Ничего не говори"
+          ]
+        },
+        {
+          "id": "s49",
+          "type": "guess-song",
+          "audio": "/audio/s49.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Руки Вверх - Он тебя целует"
+          ]
+        },
+        {
+          "id": "s50",
+          "type": "guess-song",
+          "audio": "/audio/s50.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Руки Вверх - Ты мое море"
+          ]
+        },
+        {
+          "id": "s51",
+          "type": "guess-song",
+          "audio": "/audio/s51.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Танцы Минус - Город"
+          ]
+        },
+        {
+          "id": "s52",
+          "type": "guess-song",
+          "audio": "/audio/s52.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Шатунов - Детство"
+          ]
+        },
+        {
+          "id": "s53",
+          "type": "guess-song",
+          "audio": "/audio/s53.mp3",
+          "text": "Что за песня?",
+          "acceptedAnswers": [
+            "Просто Лера - Лютики"
+          ]
         }
       ]
     }

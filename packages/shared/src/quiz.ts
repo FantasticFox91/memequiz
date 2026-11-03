@@ -105,9 +105,22 @@ const roundBaseSchema = z.object({
   description: z.string().trim().min(1).optional(),
 });
 
-export const roundSchema = roundBaseSchema.extend({
-  questions: z.array(questionSchema).min(1),
-});
+export const roundSchema = roundBaseSchema
+  .extend({
+    questions: z.array(questionSchema).min(1),
+    // сколько случайных вопросов раунда достаётся участнику; без pick — все.
+    // Выбор зависит от участника и не меняется при перезагрузке (пока не меняется список вопросов)
+    pick: z.int().positive().optional(),
+  })
+  .refine((r) => r.pick === undefined || r.pick <= r.questions.length, {
+    path: ['pick'],
+    message: 'pick больше числа вопросов раунда',
+  });
+
+// сколько вопросов раунда получает один участник
+export function roundSize(round: { questions: readonly unknown[]; pick?: number }): number {
+  return Math.min(round.pick ?? round.questions.length, round.questions.length);
+}
 
 // раунды идут в порядке файла; id вопросов уникальны по всей викторине, баллы считаются за вопрос
 export const roundsSchema = z

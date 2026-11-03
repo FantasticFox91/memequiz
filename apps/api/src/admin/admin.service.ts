@@ -1,5 +1,9 @@
 import { Injectable } from '@nestjs/common';
-import type { AdminAnswersQuery, AdminAnswersResponse } from '@memequiz/shared';
+import type {
+  AdminAnswersQuery,
+  AdminAnswersResponse,
+  AdminParticipantsResponse,
+} from '@memequiz/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { QuestionsService } from '../quiz/questions.service';
 
@@ -10,9 +14,10 @@ export class AdminService {
     private readonly questions: QuestionsService,
   ) {}
 
-  async answers(filter: AdminAnswersQuery['filter']): Promise<AdminAnswersResponse> {
-    // черновики тоже: локально в них могли уже ответить
-    const questions = this.questions.list().flatMap((quiz) =>
+  // вопросы с вводом текста всех викторин в порядке файлов.
+  // Черновики тоже: локально в них могли уже ответить
+  private textQuestions(): AdminAnswersResponse['questions'] {
+    return this.questions.list().flatMap((quiz) =>
       quiz.rounds.flatMap((round) =>
         round.questions
           .filter((q) => !q.options)
@@ -26,6 +31,47 @@ export class AdminService {
           })),
       ),
     );
+  }
+
+  async participants(filter: AdminAnswersQuery['filter']): Promise<AdminParticipantsResponse> {
+    const questions = this.textQuestions();
+    // порядок ответов участника — как вопросы в файле
+    const position = new Map(questions.map((q, i) => [`${q.quizId}:${q.id}`, i]));
+    const rows = await this.prisma.result.findMany({
+      where: filter === 'pending' ? { textAnswers: { some: { reviewed: false } } } : undefined,
+      include: { textAnswers: true },
+      orderBy: { createdAt: 'desc' },
+    });
+    return {
+      questions,
+      results: rows.map((row) => ({
+        id: row.id,
+        quizId: row.quizId,
+        nickname: row.nickname,
+        source: row.source,
+        score: row.score,
+        total: row.total,
+        durationMs: row.durationMs,
+        createdAt: row.createdAt.toISOString(),
+        answers: row.textAnswers
+          .map(({ id, questionId, text, points, reviewed }) => ({
+            id,
+            questionId,
+            text,
+            points,
+            reviewed,
+          }))
+          .sort(
+            (a, b) =>
+              (position.get(`${row.quizId}:${a.questionId}`) ?? Infinity) -
+              (position.get(`${row.quizId}:${b.questionId}`) ?? Infinity),
+          ),
+      })),
+    };
+  }
+
+  async answers(filter: AdminAnswersQuery['filter']): Promise<AdminAnswersResponse> {
+    const questions = this.textQuestions();
     const rows = await this.prisma.textAnswer.findMany({
       where: filter === 'pending' ? { reviewed: false } : undefined,
       include: { result: { select: { nickname: true, quizId: true } } },

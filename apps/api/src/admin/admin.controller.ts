@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import {
   type AdminAnswersResponse,
+  type AdminParticipantsResponse,
   adminAnswersQuerySchema,
   adminLoginRequestSchema,
   adminVerdictRequestSchema,
@@ -59,6 +60,13 @@ export class AdminController {
   @UseGuards(AdminGuard)
   answers(@Query() query: AdminAnswersQueryDto): Promise<AdminAnswersResponse> {
     return this.admin.answers(query.filter);
+  }
+
+  // те же текстовые ответы, сгруппированные по участникам (засчитанным результатам)
+  @Get('participants')
+  @UseGuards(AdminGuard)
+  participants(@Query() query: AdminAnswersQueryDto): Promise<AdminParticipantsResponse> {
+    return this.admin.participants(query.filter);
   }
 
   @Post('answers/verdict')

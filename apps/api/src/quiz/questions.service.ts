@@ -5,9 +5,9 @@ import {
   type Question,
   type QuizInfo,
   type Round,
-  questionMaxPoints,
   quizFileSchema,
   quizIdSchema,
+  roundSize,
 } from '@memequiz/shared';
 import { z } from 'zod';
 
@@ -24,13 +24,11 @@ export type Quiz = {
   order: number;
   draft: boolean;
   rounds: readonly Round[];
-  // все вопросы всех раундов подряд: для подсчёта баллов раунды не важны
+  // все вопросы всех раундов подряд, включая не выпавшие участнику (pick)
   questions: readonly Question[];
   byId: ReadonlyMap<string, Question>;
-  // число вопросов
+  // число вопросов у одного участника: с учётом pick раундов
   total: number;
-  // максимум баллов: текстовый ответ стоит больше вопроса с вариантами
-  maxScore: number;
 };
 
 @Injectable()
@@ -114,8 +112,7 @@ function loadQuizzes(): Quiz[] {
       rounds,
       questions,
       byId: new Map(questions.map((q) => [q.id, q])),
-      total: questions.length,
-      maxScore: questions.reduce((sum, q) => sum + questionMaxPoints(q), 0),
+      total: rounds.reduce((sum, r) => sum + roundSize(r), 0),
     };
   });
   return quizzes.sort((a, b) => a.order - b.order || a.id.localeCompare(b.id));
