@@ -89,11 +89,24 @@ export const leaderboardQuerySchema = z.object({
 
 // только проверенные результаты (pending: false); rank: место по порядку score DESC, durationMs ASC (null в конце), createdAt ASC:
 // при равенстве баллов выше тот, кто быстрее, затем тот, кто раньше
+// server — SERVER_ID сервера, где играл участник; own: false — запись со второго сервера (PEER_URL).
+// Лидерборд общий для обоих серверов, места считаются по объединённому списку
 export const leaderboardEntrySchema = quizResultSchema.extend({
   rank: z.int().positive(),
+  server: z.string().optional(),
+  own: z.boolean().optional(),
 });
 
 export const leaderboardResponseSchema = z.array(leaderboardEntrySchema);
+
+// GET /api/peer/leaderboards — только свои проверенные результаты (без данных второго сервера):
+// второй сервер раз в минуту забирает их для общего лидерборда. Данные те же, что в публичном лидерборде
+export const PEER_LEADERBOARD_LIMIT = LEADERBOARD_MAX_LIMIT;
+
+export const peerLeaderboardsResponseSchema = z.object({
+  server: z.string(),
+  quizzes: z.record(z.string(), z.array(quizResultSchema)),
+});
 
 // GET /api/bot — username бота для ссылки «Поделиться» из Telegram (t.me/<username>?startapp).
 // null — бот выключен или ещё не запустился: тогда делимся ссылкой на сайт
@@ -191,4 +204,5 @@ export type StatusResponse = z.infer<typeof statusResponseSchema>;
 export type LeaderboardQuery = z.infer<typeof leaderboardQuerySchema>;
 export type LeaderboardEntry = z.infer<typeof leaderboardEntrySchema>;
 export type LeaderboardResponse = z.infer<typeof leaderboardResponseSchema>;
+export type PeerLeaderboardsResponse = z.infer<typeof peerLeaderboardsResponseSchema>;
 export type BotInfoResponse = z.infer<typeof botInfoResponseSchema>;

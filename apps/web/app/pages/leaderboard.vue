@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { type LeaderboardResponse, nicknameKey } from '@memequiz/shared';
+import { type LeaderboardEntry, type LeaderboardResponse, nicknameKey } from '@memequiz/shared';
 
 const participant = useParticipantStore();
 const quiz = useQuizStore();
@@ -54,9 +54,18 @@ const dateFormat = new Intl.DateTimeFormat('ru-RU', {
   minute: '2-digit',
 });
 
-// ники на сайте уникальны, поэтому себя можно узнать по нику
-const isMe = (nickname: string) =>
-  !!participant.nicknameKey && nicknameKey(nickname) === participant.nicknameKey;
+// ники на сайте уникальны, поэтому себя можно узнать по нику; запись со второго сервера — не ты,
+// там тот же ник может быть у другого человека
+const isMe = (entry: LeaderboardEntry) =>
+  entry.own !== false &&
+  !!participant.nicknameKey &&
+  nicknameKey(entry.nickname) === participant.nicknameKey;
+
+// общий лидерборд двух серверов: метка у ника, только если в списке есть оба
+const SERVER_FLAGS: Record<string, string> = { ru: '🇷🇺' };
+const mixed = computed(() => new Set(entries.value?.map((e) => e.server)).size > 1);
+const serverFlag = (server: string | undefined) =>
+  mixed.value && server ? (SERVER_FLAGS[server] ?? '🌍') : null;
 </script>
 
 <template>
@@ -105,10 +114,17 @@ const isMe = (nickname: string) =>
           :key="entry.rank"
           class="rise-in"
           :style="{ '--i': Math.min(i, 12) }"
-          :class="{ me: isMe(entry.nickname) }"
+          :class="{ me: isMe(entry) }"
         >
           <td class="rank">{{ entry.rank }}</td>
-          <td class="nick">{{ entry.nickname }}</td>
+          <td class="nick">
+            <span
+              v-if="serverFlag(entry.server)"
+              class="flag"
+              :title="entry.server === 'ru' ? 'Играл на сервере для России' : 'Играл на основном сервере'"
+              >{{ serverFlag(entry.server) }}</span
+            >{{ entry.nickname }}
+          </td>
           <td class="num">{{ entry.score }}/{{ entry.total }}</td>
           <td class="time">{{ formatDuration(entry.durationMs) }}</td>
           <td class="date">{{ dateFormat.format(new Date(entry.createdAt)) }}</td>
@@ -186,6 +202,10 @@ td {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.flag {
+  margin-right: 4px;
 }
 
 .num {

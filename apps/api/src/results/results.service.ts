@@ -170,6 +170,12 @@ export class ResultsService {
     return !!other;
   }
 
+  // викторины, в которых есть хотя бы один результат
+  async quizIds(): Promise<string[]> {
+    const rows = await this.prisma.result.findMany({ distinct: ['quizId'], select: { quizId: true } });
+    return rows.map((r) => r.quizId);
+  }
+
   async leaderboard(quizId: string, limit: number): Promise<LeaderboardEntry[]> {
     const rows = await this.prisma.result.findMany({
       // результаты с непроверенными текстовыми ответами появятся после проверки

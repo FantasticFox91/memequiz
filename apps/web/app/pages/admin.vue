@@ -239,12 +239,6 @@ function answerTone(answer: ParticipantAnswer) {
   return VERDICTS.find((v) => v.points === answer.points)?.tone ?? null;
 }
 
-function formatDuration(ms: number | null) {
-  if (ms === null) return null;
-  const seconds = Math.round(ms / 1000);
-  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
-}
-
 // кнопки оценки: +2 — угадано, +1 — частично (например, только исполнитель), 0 — нет
 const VERDICTS = [
   { points: 2, label: '+2', tone: 'full', aria: 'Засчитать полностью, 2 балла' },
@@ -403,7 +397,7 @@ onMounted(load);
             </span>
             <span class="meta">
               {{ quizTitle(result.quizId) }} · {{ result.score }} из {{ result.total }}
-              <template v-if="formatDuration(result.durationMs)">
+              <template v-if="result.durationMs !== null">
                 · {{ formatDuration(result.durationMs) }}
               </template>
               <template v-if="pendingOf(result)">

@@ -20,6 +20,14 @@ export const envSchema = z.object({
   // адрес Mini App для кнопок бота, например https://memequiz.example.com
   WEB_APP_URL: optionalString.pipe(z.url({ protocol: /^https$/ }).optional()),
 
+  // общий лидерборд двух серверов: SERVER_ID — метка этого сервера (main, ru),
+  // PEER_URL — адрес второго, например https://memequiz.example.ru. Не задан — лидерборд только свой
+  SERVER_ID: z
+    .string()
+    .regex(/^[a-z0-9-]+$/, 'SERVER_ID: латиница в нижнем регистре, цифры, -')
+    .default('main'),
+  PEER_URL: optionalString.pipe(z.url({ protocol: /^https?$/ }).optional()),
+
   // вход в админку (/admin, проверка текстовых ответов). Не заданы — админка выключена
   ADMIN_USERNAME: optionalString,
   ADMIN_PASSWORD: optionalString.pipe(
