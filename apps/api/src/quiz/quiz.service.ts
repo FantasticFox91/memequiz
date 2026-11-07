@@ -73,11 +73,14 @@ export class QuizService {
    * но случайность детерминирована участником: перезагрузка и повторная попытка дают тот же набор,
    * поэтому сервер может проверить ответы без хранения выбора. Порядок — как в файле.
    */
-  roundsFor(quiz: Quiz, participant: ParticipantKey): Round[] {
+  roundsFor(quiz: Quiz, participant: ParticipantKey, startedAt: Date | null): Round[] {
+    // startedAt — первая отметка старта (quiz_starts): живёт всю попытку, а сброс результата в БД
+    // удаляет её вместе с результатом — после сброса участнику выпадает новый набор
+    const attempt = startedAt?.getTime() ?? 'none';
     return quiz.rounds.map((round) => {
       if (roundSize(round) === round.questions.length) return round;
       const random = seededRandom(
-        `${participant.source}:${participant.externalId}:${quiz.id}:${round.id}`,
+        `${participant.source}:${participant.externalId}:${quiz.id}:${round.id}:${attempt}`,
       );
       const picked = new Set(shuffle(round.questions, random).slice(0, roundSize(round)));
       return { ...round, questions: round.questions.filter((q) => picked.has(q)) };

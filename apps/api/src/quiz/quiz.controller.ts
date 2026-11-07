@@ -29,11 +29,13 @@ export class QuizController {
 
   // вопросы участника: в раундах с pick у каждого свой набор
   @Get('quiz/:quizId')
-  getQuiz(
+  async getQuiz(
     @Param('quizId') quizId: string,
     @CurrentParticipant() identity: ParticipantIdentity,
-  ): QuizResponse {
-    return this.quiz.getPublicRounds(this.quiz.roundsFor(this.quiz.getQuiz(quizId), identity));
+  ): Promise<QuizResponse> {
+    const quiz = this.quiz.getQuiz(quizId);
+    const startedAt = await this.results.startedAt(identity, quiz.id);
+    return this.quiz.getPublicRounds(this.quiz.roundsFor(quiz, identity, startedAt));
   }
 
   // отметка начала: от неё сервер считает время засчитанной попытки
@@ -58,8 +60,9 @@ export class QuizController {
   ): Promise<SubmitResponse> {
     const quiz = this.quiz.getQuiz(quizId);
     const participant = withNickname(identity, body.nickname);
+    const startedAt = await this.results.startedAt(identity, quiz.id);
     const { textAnswers, ...attempt } = this.quiz.score(
-      this.quiz.roundsFor(quiz, identity),
+      this.quiz.roundsFor(quiz, identity, startedAt),
       body.answers,
     );
     const { result, isFirst } = await this.results.saveFirst(

@@ -134,6 +134,15 @@ export class ResultsService {
     `;
   }
 
+  // первая отметка старта; null — не было (или сброшена вместе с результатом)
+  async startedAt(participant: ParticipantKey, quizId: string): Promise<Date | null> {
+    const start = await this.prisma.quizStart.findUnique({
+      where: { source_externalId_quizId: { ...participantWhere(participant), quizId } },
+      select: { startedAt: true },
+    });
+    return start?.startedAt ?? null;
+  }
+
   // засчитанные результаты участника по всем викторинам; nickname — ник первого из них
   async findAll(
     participant: ParticipantKey,
