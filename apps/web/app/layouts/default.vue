@@ -2,7 +2,10 @@
   <div class="layout">
     <header class="header">
       <NuxtLink to="/" class="logo">MemeQuiz</NuxtLink>
-      <NuxtLink to="/leaderboard">Лидерборд</NuxtLink>
+      <nav class="nav">
+        <NuxtLink to="/oil">Нефть</NuxtLink>
+        <NuxtLink to="/leaderboard">Лидерборд</NuxtLink>
+      </nav>
     </header>
     <main class="content">
       <slot />
@@ -46,6 +49,11 @@ html[data-tg] .layout {
   display: flex;
   justify-content: space-between;
   align-items: center;
+}
+
+.nav {
+  display: flex;
+  gap: 16px;
 }
 
 .logo {
