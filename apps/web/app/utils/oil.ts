@@ -4,9 +4,9 @@ export type OilTowerType = 'm' | 'l' | 'xl';
 
 // очки в минуту для каждой точки вышки
 export const OIL_TOWERS: Record<OilTowerType, { label: string; rates: number[] }> = {
-  m: { label: 'M', rates: [1, 2] },
-  l: { label: 'L', rates: [1, 1, 2] },
-  xl: { label: 'XL', rates: [1, 1, 2, 2] },
+  m: { label: 'S', rates: [1, 2] },
+  l: { label: 'M', rates: [1, 1, 2] },
+  xl: { label: 'L', rates: [1, 1, 2, 2] },
 };
 
 // цикл по московскому времени: очки идут с 03:00 до 02:50 следующего дня, с 02:50 до 03:00 — перерыв
@@ -272,7 +272,9 @@ export function analyzeOil(input: OilInput): OilAnalysis {
     .sort(([a], [b]) => a - b)
     .map(([rate, points]) => {
       const current = rate === us.rate;
-      const enemyRates = enemies.map((e) => (current ? e.rate : Math.min(e.rate, totalRate - rate)));
+      const enemyRates = enemies.map((e) =>
+        current ? e.rate : Math.min(e.rate, totalRate - rate),
+      );
       return { rate, points, current, ...secureHold(input, rate, enemyRates) };
     });
 
@@ -297,7 +299,10 @@ export function analyzeOil(input: OilInput): OilAnalysis {
         missingWithAll = 1 - result.margin;
       }
       if (result.deadline !== null) {
-        viable.push({ mask, tactic: { captures, deadline: result.deadline, margin: result.margin } });
+        viable.push({
+          mask,
+          tactic: { captures, deadline: result.deadline, margin: result.margin },
+        });
       }
     }
     for (const v of viable) {

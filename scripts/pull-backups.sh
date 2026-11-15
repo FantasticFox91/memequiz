@@ -6,7 +6,7 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
-REMOTE="${REMOTE:-root@94.141.161.179}"
+REMOTE="${REMOTE:-root@150.241.107.149}"
 REMOTE_DIR="${REMOTE_DIR:-/opt/memequiz/backups}"
 DIR="${DIR:-backups}"
 mkdir -p "$DIR"

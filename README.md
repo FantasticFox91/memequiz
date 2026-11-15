@@ -39,7 +39,7 @@ docker compose -f docker-compose.yml -f docker-compose.local.yml up -d --build
 
 ## Prod
 
-Сервер `94.141.161.179`, сайт https://memequiz.94-141-161-179.sslip.io. Репозиторий склонирован в `/opt/memequiz`, рядом лежит `.env`.
+Сервер `150.241.107.149`, сайт https://memequiz.150-241-107-149.sslip.io. Репозиторий склонирован в `/opt/memequiz`, рядом лежит `.env`.
 
 ```bash
 # обновление
