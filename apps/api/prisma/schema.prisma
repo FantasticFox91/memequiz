@@ -68,3 +68,43 @@ model QuizStart {
   @@id([source, externalId, quizId])
   @@map("quiz_starts")
 }
+
+/// Карта нефти из конструктора (/map). id — он же код в ссылке /map?id=.
+/// Раскладку меняет только владелец (тот же source + externalId, что у результатов викторины),
+/// держателей точек отмечает любой со ссылкой
+model OilMap {
+  id           String            @id
+  ownerSource  ParticipantSource @map("owner_source")
+  ownerId      String            @map("owner_id")
+  name         String
+  /// OilMapLayout из shared: точки, связи, союзы, aspect
+  layout       Json
+  /// растёт при каждом сохранении раскладки: по ней ловим правку устаревшей версии
+  version      Int               @default(1)
+  /// фон-скриншот; читается только отдельным эндпоинтом, в остальных запросах omit
+  image        Bytes?
+  imageType    String?           @map("image_type")
+  /// 0 — фона нет
+  imageVersion Int               @default(0) @map("image_version")
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  holders      OilMapHolder[]
+
+  @@index([ownerSource, ownerId])
+  @@map("oil_maps")
+}
+
+/// Кто сидит на точке. Отдельная строка на точку: одновременные отметки разных точек
+/// не перетирают друг друга. Свободная точка — строки нет
+model OilMapHolder {
+  mapId      String   @map("map_id")
+  map        OilMap   @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  pointId    String   @map("point_id")
+  allianceId String   @map("alliance_id")
+  /// ник того, кто отметил последним
+  updatedBy  String?  @map("updated_by")
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([mapId, pointId])
+  @@map("oil_map_holders")
+}

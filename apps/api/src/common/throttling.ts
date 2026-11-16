@@ -41,6 +41,17 @@ export const ADMIN_LOGIN_LIMITS = {
   ip: { ttl: HOUR, limit: 30 },
 };
 
+// карты нефти: создание и загрузка фона-скриншота тяжелее обычных запросов
+export const OIL_MAP_CREATE_LIMITS = {
+  participant: { ttl: MINUTE, limit: 5 },
+  ip: { ttl: HOUR, limit: 60 },
+};
+
+export const OIL_MAP_IMAGE_LIMITS = {
+  participant: { ttl: MINUTE, limit: 5 },
+  ip: { ttl: HOUR, limit: 60 },
+};
+
 function participantTracker(req: TelegramRequest): string {
   if (req.telegramUser) return `tg:${req.telegramUser.id}`;
   const webId = readCookie(req, WEB_ID_COOKIE);

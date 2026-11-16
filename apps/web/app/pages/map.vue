@@ -1,0 +1,1688 @@
+<script setup lang="ts">
+import type {
+  BotInfoResponse,
+  OilMapLayout,
+  OilMapListItem,
+  OilMapPoint,
+  OilMapResponse,
+  OilPointType,
+} from '@memequiz/shared';
+import { formatOilClock, formatOilMinutes, oilCycle } from '~/utils/oil';
+
+useHead({ title: 'Карта нефти · MemeQuiz' });
+
+/*
+ * Общие карты нефти. Владелец в конструкторе расставляет точки (XS…XXL), связи и союзы;
+ * у кого есть ссылка — отмечает, какой союз на какой точке. Изменения видны всем сразу (SSE),
+ * легенда считает итог каждого союза к сбросу.
+ */
+
+const FREE = 'free';
+const IMAGE_MAX_SIDE = 1600;
+const ZOOMS = [1, 1.5, 2, 3, 4];
+const RECENT_KEY = 'oil-map-recent';
+const RECENT_MAX = 10;
+const PALETTE = [
+  '#3d9be9',
+  '#e02424',
+  '#1e8e3e',
+  '#17b8b8',
+  '#ec4f97',
+  '#f28a1b',
+  '#a3cf1f',
+  '#7e2fc4',
+];
+
+type PointShape = 'diamond' | 'square' | 'circle';
+
+// размер — в процентах ширины карты
+const POINT_TYPES: Record<OilPointType, { reward: number; shape: PointShape; size: number }> = {
+  XS: { reward: 100, shape: 'diamond', size: 4.2 },
+  S: { reward: 300, shape: 'square', size: 4.4 },
+  M: { reward: 375, shape: 'diamond', size: 4.6 },
+  L: { reward: 600, shape: 'square', size: 4.8 },
+  XL: { reward: 1000, shape: 'square', size: 5 },
+  XXL: { reward: 2000, shape: 'square', size: 6 },
+  '★': { reward: 0, shape: 'circle', size: 4.6 },
+};
+const TYPE_KEYS = Object.keys(POINT_TYPES) as OilPointType[];
+
+function uid(prefix: string): string {
+  return prefix + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
+function defaultLayout(name: string): OilMapLayout {
+  return {
+    name,
+    aspect: 1,
+    points: [],
+    links: [],
+    alliances: [
+      { id: 'us', name: 'Мы', color: PALETTE[0]! },
+      { id: uid('a'), name: 'Враг 1', color: PALETTE[1]! },
+    ],
+  };
+}
+
+const api = useApi();
+const route = useRoute();
+const router = useRouter();
+const haptics = useHaptics();
+const participant = useParticipantStore();
+const telegram = useTelegram();
+
+const mapId = computed(() => {
+  const id = route.query.id;
+  return typeof id === 'string' && /^[A-Za-z0-9]{10}$/.test(id) ? id : null;
+});
+
+const live = useOilMapLive(mapId);
+const { map, status, online, connected, activity, imageUrl } = live;
+
+// 403/404/409 api присылает понятным текстом — показываем его, остальное через общий разбор
+function errorMessage(e: unknown): string {
+  const { status: code, data } = e as { status?: number; data?: { message?: unknown } };
+  if (code && [400, 403, 404, 409].includes(code) && typeof data?.message === 'string') {
+    return data.message;
+  }
+  return apiErrorMessage(e);
+}
+
+const now = ref(new Date());
+let timer: ReturnType<typeof setInterval> | undefined;
+onMounted(() => {
+  recent.value = readStorage<RecentMap[]>(RECENT_KEY) ?? [];
+  timer = setInterval(() => (now.value = new Date()), 15_000);
+});
+onUnmounted(() => clearInterval(timer));
+
+// ---------- список карт ----------
+
+interface RecentMap {
+  id: string;
+  name: string;
+}
+
+const myMaps = ref<OilMapListItem[]>([]);
+const recent = ref<RecentMap[]>([]);
+const listError = ref('');
+const creating = ref(false);
+const codeInput = ref('');
+
+async function loadList() {
+  try {
+    myMaps.value = await api<OilMapListItem[]>('/oil-maps');
+    listError.value = '';
+  } catch (e) {
+    listError.value = errorMessage(e);
+  }
+}
+
+// чужие карты запоминаем: ссылку из чата потом не найти
+watch(
+  () => map.value && { id: map.value.id, name: map.value.layout.name, own: map.value.isOwner },
+  (info) => {
+    if (!info || info.own) return;
+    recent.value = [
+      { id: info.id, name: info.name },
+      ...recent.value.filter((m) => m.id !== info.id),
+    ].slice(0, RECENT_MAX);
+    writeStorage(RECENT_KEY, recent.value);
+  },
+);
+
+const otherMaps = computed(() => {
+  const own = new Set(myMaps.value.map((m) => m.id));
+  return recent.value.filter((m) => !own.has(m.id));
+});
+
+function forgetRecent(id: string) {
+  recent.value = recent.value.filter((m) => m.id !== id);
+  writeStorage(RECENT_KEY, recent.value);
+}
+
+// ссылка целиком или только код
+function openByCode() {
+  const match = /(?:id=|map_)?([A-Za-z0-9]{10})\s*$/.exec(codeInput.value.trim());
+  if (!match) {
+    listError.value = 'Не похоже на ссылку или код карты';
+    return;
+  }
+  codeInput.value = '';
+  void router.push({ query: { id: match[1] } });
+}
+
+async function createMap() {
+  creating.value = true;
+  listError.value = '';
+  try {
+    const created = await api<OilMapResponse>('/oil-maps', {
+      method: 'POST',
+      body: { layout: defaultLayout(`Карта ${myMaps.value.length + 1}`) },
+    });
+    map.value = created;
+    status.value = 'ready';
+    await router.push({ query: { id: created.id } });
+    startEdit();
+  } catch (e) {
+    listError.value = errorMessage(e);
+  } finally {
+    creating.value = false;
+  }
+}
+
+// ---------- конструктор: правим копию, на сервер уходит по «Сохранить» ----------
+
+type ImageDraft = { kind: 'keep' } | { kind: 'none' } | { kind: 'new'; blob: Blob; url: string };
+
+const draft = ref<OilMapLayout | null>(null);
+const draftMapId = ref<string | null>(null);
+// с какой версии начали править: сервер отклонит сохранение, если карта успела измениться
+const draftVersion = ref(0);
+const draftImage = ref<ImageDraft>({ kind: 'keep' });
+const editing = computed(() => draft.value !== null);
+const saving = ref(false);
+const conflict = ref(false);
+const errorText = ref('');
+
+const layout = computed<OilMapLayout | null>(() => draft.value ?? map.value?.layout ?? null);
+const shownImage = computed(() => {
+  if (!editing.value) return imageUrl.value;
+  const d = draftImage.value;
+  return d.kind === 'new' ? d.url : d.kind === 'keep' ? imageUrl.value : null;
+});
+
+// инструмент конструктора: ставить точки или соединять их
+const tool = ref<'points' | 'links'>('points');
+const newType = ref<OilPointType>('S');
+const selectedId = ref<string | null>(null);
+// первая точка будущей связи
+const linkFrom = ref<string | null>(null);
+
+function dropDraftImage() {
+  if (draftImage.value.kind === 'new') URL.revokeObjectURL(draftImage.value.url);
+  draftImage.value = { kind: 'keep' };
+}
+
+function startEdit() {
+  const current = map.value;
+  if (!current?.isOwner) return;
+  draft.value = JSON.parse(JSON.stringify(current.layout)) as OilMapLayout;
+  draftMapId.value = current.id;
+  draftVersion.value = current.version;
+  dropDraftImage();
+  selectedId.value = null;
+  linkFrom.value = null;
+  tool.value = 'points';
+  conflict.value = false;
+  errorText.value = '';
+  confirmDelete.value = false;
+}
+
+function cancelEdit() {
+  dropDraftImage();
+  draft.value = null;
+  draftMapId.value = null;
+  selectedId.value = null;
+  linkFrom.value = null;
+  conflict.value = false;
+  errorText.value = '';
+}
+
+async function saveEdit() {
+  const edited = draft.value;
+  const id = draftMapId.value;
+  if (!edited || !id || saving.value) return;
+  saving.value = true;
+  errorText.value = '';
+  const body = { version: draftVersion.value, layout: { ...edited, name: edited.name.trim() || 'Без названия' } };
+  try {
+    const saved = await api<OilMapResponse>(`/oil-maps/${id}`, { method: 'PUT', body });
+
+    let imageError = '';
+    const image = draftImage.value;
+    try {
+      if (image.kind === 'new') {
+        await api(`/oil-maps/${id}/image`, {
+          method: 'PUT',
+          body: image.blob,
+          headers: { 'Content-Type': image.blob.type },
+        });
+      } else if (image.kind === 'none' && map.value?.imageVersion) {
+        await api(`/oil-maps/${id}/image`, { method: 'DELETE' });
+      }
+    } catch (e) {
+      imageError = `Карта сохранена, но фон не загрузился: ${errorMessage(e)}`;
+    }
+
+    map.value = saved;
+    cancelEdit();
+    // версия фона приходит отдельно: перечитываем, чтобы показать новую картинку
+    if (image.kind !== 'keep') void live.load(id);
+    errorText.value = imageError;
+    haptics.notify(imageError ? 'warning' : 'success');
+  } catch (e) {
+    if ((e as { status?: number }).status === 409) {
+      conflict.value = true;
+      haptics.notify('warning');
+    } else {
+      errorText.value = errorMessage(e);
+      haptics.notify('error');
+    }
+  } finally {
+    saving.value = false;
+  }
+}
+
+// конфликт: карту сохранили с другого устройства — по выбору перезаписываем своей версией
+async function overwrite() {
+  const id = draftMapId.value;
+  if (!id) return;
+  await live.load(id);
+  if (map.value) draftVersion.value = map.value.version;
+  conflict.value = false;
+  await saveEdit();
+}
+
+// удаление в два тапа вместо confirm(): в WebView Telegram диалоги ведут себя по-разному
+const confirmDelete = ref(false);
+let confirmTimer: ReturnType<typeof setTimeout> | undefined;
+
+function armConfirm(flag: Ref<boolean>): boolean {
+  if (flag.value) {
+    flag.value = false;
+    return true;
+  }
+  flag.value = true;
+  clearTimeout(confirmTimer);
+  confirmTimer = setTimeout(() => (flag.value = false), 3_000);
+  return false;
+}
+
+async function deleteMap() {
+  const id = draftMapId.value;
+  if (!id || !armConfirm(confirmDelete)) return;
+  try {
+    await api(`/oil-maps/${id}`, { method: 'DELETE' });
+    cancelEdit();
+    haptics.impact('medium');
+    await router.replace({ query: {} });
+  } catch (e) {
+    errorText.value = errorMessage(e);
+  }
+}
+
+const fileInput = ref<HTMLInputElement>();
+
+async function compressImage(file: File): Promise<{ blob: Blob; aspect: number }> {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = new Image();
+    img.src = url;
+    await img.decode();
+    const scale = Math.min(1, IMAGE_MAX_SIDE / Math.max(img.naturalWidth, img.naturalHeight));
+    const w = Math.max(1, Math.round(img.naturalWidth * scale));
+    const h = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, 'image/jpeg', 0.8),
+    );
+    if (!blob) throw new Error('toBlob failed');
+    return { blob, aspect: w / h };
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function onImagePicked(event: Event) {
+  const input = event.target as HTMLInputElement;
+  const file = input.files?.[0];
+  input.value = '';
+  if (!file || !draft.value) return;
+  try {
+    const { blob, aspect } = await compressImage(file);
+    dropDraftImage();
+    draftImage.value = { kind: 'new', blob, url: URL.createObjectURL(blob) };
+    draft.value.aspect = Math.round(aspect * 1000) / 1000;
+    errorText.value = '';
+  } catch {
+    errorText.value = 'Не получилось открыть картинку';
+  }
+}
+
+function removeImage() {
+  dropDraftImage();
+  draftImage.value = { kind: 'none' };
+}
+
+// фон в игре можно спрятать, чтобы не мешал цветам союзов
+const showImage = ref(true);
+
+// ---------- масштаб ----------
+
+const zoomIndex = ref(0);
+const zoom = computed(() => ZOOMS[zoomIndex.value]!);
+const viewport = ref<HTMLElement>();
+
+// масштабируем относительно центра видимой области
+function setZoom(index: number) {
+  const el = viewport.value;
+  const next = Math.min(Math.max(index, 0), ZOOMS.length - 1);
+  if (!el || next === zoomIndex.value) return;
+  const ratio = ZOOMS[next]! / zoom.value;
+  const cx = el.scrollLeft + el.clientWidth / 2;
+  const cy = el.scrollTop + el.clientHeight / 2;
+  zoomIndex.value = next;
+  nextTick(() => {
+    el.scrollLeft = cx * ratio - el.clientWidth / 2;
+    el.scrollTop = cy * ratio - el.clientHeight / 2;
+  });
+}
+
+// ---------- точки на карте ----------
+
+const surface = ref<HTMLElement>();
+
+function toMapCoords(event: { clientX: number; clientY: number }): { x: number; y: number } {
+  const rect = surface.value!.getBoundingClientRect();
+  const clamp = (v: number) => Math.round(Math.min(Math.max(v, 0), 100) * 100) / 100;
+  return {
+    x: clamp(((event.clientX - rect.left) / rect.width) * 100),
+    y: clamp(((event.clientY - rect.top) / rect.height) * 100),
+  };
+}
+
+// «S-07»: следующий свободный номер этого типа
+function nextName(target: OilMapLayout, type: OilPointType): string {
+  if (type === '★') return '';
+  const used = new Set(target.points.filter((p) => p.type === type).map((p) => p.name));
+  let n = 1;
+  while (used.has(`${type}-${String(n).padStart(2, '0')}`)) n++;
+  return `${type}-${String(n).padStart(2, '0')}`;
+}
+
+function onSurfaceClick(event: MouseEvent) {
+  const target = draft.value;
+  if (!target || tool.value !== 'points') {
+    selectedId.value = null;
+    linkFrom.value = null;
+    return;
+  }
+  // первый тап по пустому месту закрывает редактор точки, а не ставит новую
+  if (selectedId.value) {
+    selectedId.value = null;
+    return;
+  }
+  target.points.push({
+    id: uid('pt'),
+    type: newType.value,
+    ...toMapCoords(event),
+    reward: POINT_TYPES[newType.value].reward,
+    name: nextName(target, newType.value),
+  });
+  haptics.impact('light');
+}
+
+let drag: { pointerId: number; startX: number; startY: number; moved: boolean } | null = null;
+// после перетаскивания браузер всё равно шлёт click: его не считаем выбором
+let suppressClick = false;
+
+function onPointDown(event: PointerEvent) {
+  if (!editing.value || tool.value !== 'points') return;
+  drag = { pointerId: event.pointerId, startX: event.clientX, startY: event.clientY, moved: false };
+  suppressClick = false;
+  (event.currentTarget as Element).setPointerCapture(event.pointerId);
+}
+
+function onPointMove(event: PointerEvent, point: OilMapPoint) {
+  if (!drag || drag.pointerId !== event.pointerId) return;
+  if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) {
+    return;
+  }
+  drag.moved = true;
+  Object.assign(point, toMapCoords(event));
+}
+
+function onPointUp() {
+  if (drag?.moved) suppressClick = true;
+  drag = null;
+}
+
+function onPointClick(point: OilMapPoint) {
+  if (suppressClick) {
+    suppressClick = false;
+    return;
+  }
+  const target = draft.value;
+  if (target && tool.value === 'links') {
+    // тап по двум точкам: связать, повторно — разорвать; цепочкой — от последней точки
+    const from = linkFrom.value;
+    if (!from) {
+      linkFrom.value = point.id;
+    } else if (from === point.id) {
+      linkFrom.value = null;
+    } else {
+      const index = target.links.findIndex(
+        ([a, b]) => (a === from && b === point.id) || (a === point.id && b === from),
+      );
+      if (index === -1) target.links.push([from, point.id]);
+      else target.links.splice(index, 1);
+      linkFrom.value = point.id;
+    }
+    haptics.selection();
+    return;
+  }
+  selectedId.value = !target && selectedId.value === point.id ? null : point.id;
+  haptics.selection();
+}
+
+const selectedPoint = computed(
+  () => layout.value?.points.find((p) => p.id === selectedId.value) ?? null,
+);
+
+const lines = computed(() => {
+  const current = layout.value;
+  if (!current) return [];
+  const byId = new Map(current.points.map((p) => [p.id, p]));
+  return current.links.flatMap(([a, b]) => {
+    const p = byId.get(a);
+    const q = byId.get(b);
+    return p && q ? [{ key: `${a}-${b}`, x1: p.x, y1: p.y, x2: q.x, y2: q.y }] : [];
+  });
+});
+
+function clean(value: unknown): number {
+  const n = Math.floor(Number(value));
+  return Number.isFinite(n) ? Math.min(Math.max(n, 0), 1_000_000) : 0;
+}
+
+function setPointType(point: OilMapPoint, type: OilPointType) {
+  const target = draft.value;
+  if (!target || point.type === type) return;
+  // авто-имя и стандартные очки меняем вместе с типом, ручные правки не трогаем
+  const autoName = point.name === '' || /^[A-Z]+-\d+$/.test(point.name);
+  const autoReward = point.reward === POINT_TYPES[point.type].reward;
+  point.type = type;
+  newType.value = type;
+  if (autoReward) point.reward = POINT_TYPES[type].reward;
+  if (autoName) point.name = nextName(target, type);
+}
+
+function deletePoint(id: string) {
+  const target = draft.value;
+  if (!target) return;
+  target.points = target.points.filter((p) => p.id !== id);
+  target.links = target.links.filter(([a, b]) => a !== id && b !== id);
+  selectedId.value = null;
+}
+
+function setTool(value: 'points' | 'links') {
+  tool.value = value;
+  selectedId.value = null;
+  linkFrom.value = null;
+}
+
+// после объявления draft/selectedId: immediate-watch срабатывает сразу
+watch(
+  mapId,
+  (id) => {
+    if (!id) void loadList();
+    // открыли другую карту — правки прежней не тащим
+    if (draft.value && draftMapId.value !== id) cancelEdit();
+    selectedId.value = null;
+    errorText.value = '';
+  },
+  { immediate: true },
+);
+
+// ---------- союзы (меняет владелец в конструкторе) ----------
+
+function addAlliance() {
+  const target = draft.value;
+  if (!target) return;
+  const used = new Set(target.alliances.map((a) => a.color));
+  const color =
+    PALETTE.find((c) => !used.has(c)) ?? PALETTE[target.alliances.length % PALETTE.length]!;
+  target.alliances.push({ id: uid('a'), name: `Союз ${target.alliances.length + 1}`, color });
+}
+
+function removeAlliance(id: string) {
+  if (draft.value) draft.value.alliances = draft.value.alliances.filter((a) => a.id !== id);
+}
+
+// ---------- кто где сидит ----------
+
+const allianceById = computed(() => new Map((layout.value?.alliances ?? []).map((a) => [a.id, a])));
+
+// держатель, которого нет среди союзов раскладки (удалён в черновике), — как свободная точка
+function holderOf(pointId: string): string {
+  const holder = map.value?.holders[pointId];
+  return holder && allianceById.value.has(holder) ? holder : FREE;
+}
+
+function holderColor(pointId: string): string | null {
+  return allianceById.value.get(holderOf(pointId))?.color ?? null;
+}
+
+async function setHolder(pointId: string, allianceId: string) {
+  selectedId.value = null;
+  haptics.selection();
+  try {
+    await live.setHolder(pointId, allianceId === FREE ? null : allianceId, participant.nickname);
+    errorText.value = '';
+  } catch (e) {
+    errorText.value = errorMessage(e);
+    haptics.notify('error');
+  }
+}
+
+const confirmClear = ref(false);
+async function clearHolders() {
+  const id = map.value?.id;
+  if (!id || !armConfirm(confirmClear)) return;
+  try {
+    await api(`/oil-maps/${id}/holders`, { method: 'DELETE' });
+    await live.load(id);
+    haptics.impact('medium');
+  } catch (e) {
+    errorText.value = errorMessage(e);
+  }
+}
+
+// ---------- поделиться ----------
+
+const shareNote = ref('');
+const botUsername = ref<string | null>(null);
+onMounted(async () => {
+  if (!telegram.isTelegram) return;
+  try {
+    botUsername.value = (await api<BotInfoResponse>('/bot')).username;
+  } catch {
+    // без username поделимся ссылкой на сайт
+  }
+});
+
+async function share() {
+  const current = map.value;
+  if (!current) return;
+  const text = `Карта нефти «${current.layout.name}»`;
+  // в Telegram — ссылка на Mini App: карта откроется сразу в нём (см. plugins/telegram.client.ts)
+  const url =
+    telegram.webApp && botUsername.value
+      ? `https://t.me/${botUsername.value}?startapp=map_${current.id}`
+      : `${location.origin}/map?id=${current.id}`;
+
+  if (telegram.webApp) {
+    telegram.webApp.openTelegramLink(
+      `https://t.me/share/url?url=${encodeURIComponent(url)}&text=${encodeURIComponent(text)}`,
+    );
+    return;
+  }
+  const data: ShareData = { title: text, url };
+  if (navigator.share && (!navigator.canShare || navigator.canShare(data))) {
+    try {
+      await navigator.share(data);
+      return;
+    } catch (e) {
+      if ((e as DOMException).name === 'AbortError') return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    shareNote.value = 'Ссылка скопирована';
+  } catch {
+    shareNote.value = url;
+  }
+  setTimeout(() => (shareNote.value = ''), 4_000);
+}
+
+// ---------- легенда ----------
+
+const legend = computed(() => {
+  const points = layout.value?.points ?? [];
+  const total = points.reduce((sum, p) => sum + p.reward, 0);
+  const rows = (layout.value?.alliances ?? [])
+    .map((alliance) => {
+      const held = points.filter((p) => holderOf(p.id) === alliance.id);
+      return { ...alliance, count: held.length, sum: held.reduce((sum, p) => sum + p.reward, 0) };
+    })
+    .sort((a, b) => b.sum - a.sum);
+  const free = points.filter((p) => holderOf(p.id) === FREE);
+  const leader =
+    rows[0] && rows[0].sum > 0 && rows[0].sum > (rows[1]?.sum ?? 0) ? rows[0].id : null;
+  return {
+    rows,
+    total,
+    leader,
+    free: { count: free.length, sum: free.reduce((sum, p) => sum + p.reward, 0) },
+  };
+});
+
+const activityRows = computed(() =>
+  activity.value.map((a) => ({
+    key: a.key,
+    by: a.by,
+    point: layout.value?.points.find((p) => p.id === a.pointId)?.name || 'точка',
+    holder: a.holder ? allianceById.value.get(a.holder) : null,
+    time: formatOilClock(a.at),
+  })),
+);
+
+const cycle = computed(() => oilCycle(now.value));
+const fmt = (n: number) => n.toLocaleString('ru-RU');
+const share100 = (n: number) => (legend.value.total ? (n / legend.value.total) * 100 : 0);
+const formatDate = (iso: string) =>
+  new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
+</script>
+
+<template>
+  <section class="map-page" :class="{ 'sheet-open': selectedPoint }">
+    <NuxtLink :to="mapId ? '/map' : '/oil'" class="back rise-in">
+      ← {{ mapId ? 'Все карты' : 'Калькулятор нефти' }}
+    </NuxtLink>
+
+    <!-- ===== список карт ===== -->
+    <template v-if="!mapId">
+      <h1 class="rise-in">Карты нефти</h1>
+      <p class="hint rise-in" style="--i: 1">
+        Нарисуй карту в конструкторе и поделись ссылкой с союзом: все видят, кто на какой точке, и
+        отмечают захваты вместе — изменения приходят сразу.
+      </p>
+
+      <div class="card rise-in" style="--i: 2">
+        <h2>Мои карты</h2>
+        <NuxtLink v-for="m in myMaps" :key="m.id" :to="{ query: { id: m.id } }" class="map-link">
+          <span>{{ m.name }}</span>
+          <span class="hint small">{{ formatDate(m.updatedAt) }}</span>
+        </NuxtLink>
+        <p v-if="!myMaps.length" class="hint small">Пока нет своих карт</p>
+        <button type="button" class="btn" :disabled="creating" @click="createMap">
+          {{ creating ? 'Создаём…' : '+ Новая карта' }}
+        </button>
+      </div>
+
+      <div class="card rise-in" style="--i: 3">
+        <h2>Карты союза</h2>
+        <div v-for="m in otherMaps" :key="m.id" class="row">
+          <NuxtLink :to="{ query: { id: m.id } }" class="map-link grow">{{ m.name }}</NuxtLink>
+          <button
+            type="button"
+            class="icon-btn"
+            aria-label="Убрать из списка"
+            @click="forgetRecent(m.id)"
+          >
+            ✕
+          </button>
+        </div>
+        <p v-if="!otherMaps.length" class="hint small">
+          Здесь появятся карты, которые ты открывал по ссылке
+        </p>
+        <form class="row" @submit.prevent="openByCode">
+          <input
+            v-model="codeInput"
+            class="input name"
+            type="text"
+            placeholder="Ссылка или код карты"
+            autocomplete="off"
+          />
+          <button type="submit" class="btn btn-secondary small-btn">Открыть</button>
+        </form>
+      </div>
+      <p v-if="listError" class="error-text">{{ listError }}</p>
+    </template>
+
+    <!-- ===== состояния загрузки ===== -->
+    <p v-else-if="status === 'loading' || status === 'idle'" class="hint">Загружаем карту…</p>
+    <div v-else-if="status === 'missing'" class="card">
+      <h2>Карта не найдена</h2>
+      <p class="hint small">Её удалили или в ссылке ошибка.</p>
+      <button type="button" class="btn btn-secondary" @click="forgetRecent(mapId!); router.push({ query: {} })">
+        К списку карт
+      </button>
+    </div>
+    <div v-else-if="status === 'error' || !map || !layout" class="card">
+      <h2>Нет связи с сервером</h2>
+      <button type="button" class="btn btn-secondary" @click="live.load()">Повторить</button>
+    </div>
+
+    <!-- ===== карта ===== -->
+    <template v-else>
+      <div class="title-row rise-in">
+        <h1>{{ layout.name }}</h1>
+        <span class="presence" :class="{ off: !connected }">
+          {{ connected ? `● ${online} онлайн` : '○ переподключаемся…' }}
+        </span>
+      </div>
+
+      <div class="card rise-in" style="--i: 1">
+        <div v-if="!editing" class="toolbar">
+          <button type="button" class="btn btn-secondary small-btn" @click="share">
+            🔗 Поделиться
+          </button>
+          <button
+            v-if="map.isOwner"
+            type="button"
+            class="btn btn-secondary small-btn"
+            @click="startEdit"
+          >
+            ✏️ Конструктор
+          </button>
+          <span v-if="shareNote" class="hint small">{{ shareNote }}</span>
+        </div>
+
+        <template v-else-if="draft">
+          <input
+            v-model="draft.name"
+            class="input"
+            type="text"
+            maxlength="40"
+            placeholder="Название карты"
+          />
+          <div class="segmented two">
+            <button
+              type="button"
+              :class="{ active: tool === 'points' }"
+              @click="setTool('points')"
+            >
+              Точки
+            </button>
+            <button type="button" :class="{ active: tool === 'links' }" @click="setTool('links')">
+              Связи
+            </button>
+          </div>
+          <template v-if="tool === 'points'">
+            <div class="types">
+              <button
+                v-for="t in TYPE_KEYS"
+                :key="t"
+                type="button"
+                :class="{ active: newType === t }"
+                @click="newType = t"
+              >
+                <b>{{ t }}</b>
+                <span>{{ POINT_TYPES[t].reward || 'база' }}</span>
+              </button>
+            </div>
+            <p class="hint small">
+              Тап по карте — поставить {{ newType }}. Тяни точку — переместить, тап — изменить.
+            </p>
+          </template>
+          <p v-else class="hint small">
+            Тапай точки по очереди — они соединятся цепочкой. Тап по уже связанной паре —
+            разорвать.
+            {{ linkFrom ? 'Тап по той же точке — закончить цепочку.' : '' }}
+          </p>
+        </template>
+
+        <div class="zoom-bar">
+          <button
+            type="button"
+            class="icon-btn plain"
+            :disabled="zoomIndex === 0"
+            aria-label="Отдалить"
+            @click="setZoom(zoomIndex - 1)"
+          >
+            −
+          </button>
+          <span class="hint small">×{{ zoom }}</span>
+          <button
+            type="button"
+            class="icon-btn plain"
+            :disabled="zoomIndex === ZOOMS.length - 1"
+            aria-label="Приблизить"
+            @click="setZoom(zoomIndex + 1)"
+          >
+            +
+          </button>
+          <span class="spacer" />
+          <template v-if="draft">
+            <button type="button" class="btn btn-secondary small-btn" @click="fileInput?.click()">
+              🖼 {{ shownImage ? 'Сменить фон' : 'Фон' }}
+            </button>
+            <button
+              v-if="shownImage"
+              type="button"
+              class="btn btn-secondary small-btn"
+              @click="removeImage"
+            >
+              ✕ фон
+            </button>
+            <input ref="fileInput" type="file" accept="image/*" hidden @change="onImagePicked" />
+          </template>
+          <label v-else-if="shownImage" class="hint small toggle">
+            <input v-model="showImage" type="checkbox" /> фон
+          </label>
+        </div>
+
+        <div ref="viewport" class="viewport">
+          <div
+            ref="surface"
+            class="surface"
+            :class="{ editing, linking: editing && tool === 'links', 'has-image': shownImage }"
+            :style="{ width: `${zoom * 100}%`, aspectRatio: String(layout.aspect) }"
+            @click="onSurfaceClick"
+          >
+            <img
+              v-if="shownImage && (editing || showImage)"
+              :src="shownImage"
+              alt=""
+              class="surface-image"
+              :class="{ faded: editing }"
+              draggable="false"
+            />
+            <svg class="links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+              <line
+                v-for="l in lines"
+                :key="l.key"
+                :x1="l.x1"
+                :y1="l.y1"
+                :x2="l.x2"
+                :y2="l.y2"
+                vector-effect="non-scaling-stroke"
+              />
+            </svg>
+            <button
+              v-for="point in layout.points"
+              :key="point.id"
+              type="button"
+              class="point"
+              :class="[
+                POINT_TYPES[point.type].shape,
+                {
+                  selected: point.id === selectedId || point.id === linkFrom,
+                  free: !holderColor(point.id),
+                },
+              ]"
+              :style="{
+                left: `${point.x}%`,
+                top: `${point.y}%`,
+                '--size': `${POINT_TYPES[point.type].size}cqw`,
+                '--point-color': holderColor(point.id) ?? undefined,
+              }"
+              :aria-label="`${point.name || point.type}: ${point.reward} очков`"
+              @click.stop="onPointClick(point)"
+              @pointerdown="onPointDown"
+              @pointermove="onPointMove($event, point)"
+              @pointerup="onPointUp"
+              @pointercancel="onPointUp"
+            >
+              <span class="point-body" />
+              <span class="point-text">
+                <span v-if="point.name" class="point-name">{{ point.name }}</span>
+                <span v-if="point.reward" class="point-reward">{{ point.reward }}</span>
+              </span>
+            </button>
+            <p v-if="!layout.points.length" class="surface-empty hint small">
+              {{
+                editing
+                  ? 'Тапни, чтобы поставить первую точку. Можно подложить скриншот карты как фон.'
+                  : map.isOwner
+                    ? 'Точек нет — открой конструктор'
+                    : 'Владелец ещё не нарисовал карту'
+              }}
+            </p>
+          </div>
+        </div>
+
+        <div v-if="conflict" class="conflict">
+          <b>Карту уже сохранили с другого устройства.</b>
+          <span class="hint small">Твои правки пока не сохранены.</span>
+          <div class="actions">
+            <button type="button" class="btn" :disabled="saving" @click="overwrite">
+              Перезаписать моей
+            </button>
+            <button type="button" class="btn btn-secondary" @click="cancelEdit">
+              Взять ту версию
+            </button>
+          </div>
+        </div>
+
+        <p v-if="errorText" class="error-text">{{ errorText }}</p>
+
+        <div v-if="editing && !conflict" class="actions">
+          <button type="button" class="btn" :disabled="saving" @click="saveEdit">
+            {{ saving ? 'Сохраняем…' : 'Сохранить' }}
+          </button>
+          <button type="button" class="btn btn-secondary" :disabled="saving" @click="cancelEdit">
+            Отмена
+          </button>
+          <button type="button" class="btn btn-secondary danger" @click="deleteMap">
+            {{ confirmDelete ? 'Точно удалить карту для всех?' : 'Удалить карту' }}
+          </button>
+        </div>
+        <p v-else-if="!editing && layout.points.length" class="hint small">
+          Тапни по точке, чтобы отметить, чья она. Видят все, у кого есть ссылка.
+        </p>
+      </div>
+
+      <div v-if="draft" class="card rise-in" style="--i: 2">
+        <h2>Союзы</h2>
+        <div v-for="a in draft.alliances" :key="a.id" class="row">
+          <input v-model="a.color" type="color" class="color" aria-label="Цвет" />
+          <input
+            v-model="a.name"
+            class="input name"
+            type="text"
+            maxlength="24"
+            placeholder="Союз"
+          />
+          <button
+            v-if="draft.alliances.length > 1"
+            type="button"
+            class="icon-btn"
+            aria-label="Удалить союз"
+            @click="removeAlliance(a.id)"
+          >
+            ✕
+          </button>
+        </div>
+        <button
+          v-if="draft.alliances.length < 16"
+          type="button"
+          class="btn btn-secondary"
+          @click="addAlliance"
+        >
+          + Добавить союз
+        </button>
+        <p class="hint small">Удалённый союз снимается со всех своих точек после сохранения</p>
+      </div>
+
+      <div class="card rise-in" style="--i: 3">
+        <h2>Итог к сбросу</h2>
+        <p class="hint small">
+          Сброс через {{ formatOilMinutes(cycle.minutesLeft) }} (в
+          {{ formatOilClock(cycle.endsAt) }}), если точки никто не перехватит
+        </p>
+        <ul class="legend">
+          <li
+            v-for="row in legend.rows"
+            :key="row.id"
+            :class="{ leader: row.id === legend.leader }"
+          >
+            <span class="dot" :style="{ background: row.color }" />
+            <span class="legend-name">
+              {{ row.name || 'Без имени' }}{{ row.id === legend.leader ? ' 👑' : '' }}
+              <span class="hint small">{{ row.count }} т.</span>
+            </span>
+            <span class="legend-sum">{{ fmt(row.sum) }}</span>
+            <span class="bar" :style="{ width: `${share100(row.sum)}%`, background: row.color }" />
+          </li>
+          <li v-if="legend.free.count">
+            <span class="dot" />
+            <span class="legend-name">
+              Свободно <span class="hint small">{{ legend.free.count }} т.</span>
+            </span>
+            <span class="legend-sum">{{ fmt(legend.free.sum) }}</span>
+          </li>
+        </ul>
+        <p class="hint small">
+          Всего на карте: {{ fmt(legend.total) }} · {{ layout.points.length }} точек
+        </p>
+        <button
+          v-if="!editing && map.isOwner && Object.keys(map.holders).length"
+          type="button"
+          class="btn btn-secondary"
+          @click="clearHolders"
+        >
+          {{ confirmClear ? 'Точно освободить все точки для всех?' : 'Освободить все точки' }}
+        </button>
+      </div>
+
+      <div v-if="activityRows.length" class="card rise-in" style="--i: 4">
+        <h2>Только что</h2>
+        <ul class="activity">
+          <li v-for="a in activityRows" :key="a.key">
+            <span class="hint small">{{ a.time }}</span>
+            <span>
+              <b>{{ a.point }}</b> →
+              <template v-if="a.holder">
+                <span class="dot inline" :style="{ background: a.holder.color }" />
+                {{ a.holder.name }}
+              </template>
+              <template v-else>свободна</template>
+            </span>
+            <span v-if="a.by" class="hint small">{{ a.by }}</span>
+          </li>
+        </ul>
+      </div>
+    </template>
+
+    <div v-if="selectedPoint && map" class="sheet">
+      <template v-if="draft">
+        <div class="sheet-head">
+          <h3>Точка</h3>
+          <button
+            type="button"
+            class="icon-btn plain"
+            aria-label="Готово"
+            @click="selectedId = null"
+          >
+            ✓
+          </button>
+        </div>
+        <div class="types">
+          <button
+            v-for="t in TYPE_KEYS"
+            :key="t"
+            type="button"
+            :class="{ active: selectedPoint.type === t }"
+            @click="setPointType(selectedPoint, t)"
+          >
+            <b>{{ t }}</b>
+          </button>
+        </div>
+        <div class="row">
+          <input
+            v-model="selectedPoint.name"
+            class="input name"
+            type="text"
+            maxlength="20"
+            placeholder="Название"
+          />
+          <input
+            :value="selectedPoint.reward"
+            class="input score"
+            type="number"
+            inputmode="numeric"
+            min="0"
+            aria-label="Очков к сбросу"
+            @input="selectedPoint.reward = clean(($event.target as HTMLInputElement).value)"
+          />
+        </div>
+        <p class="hint small">Сколько очков точка даёт к сбросу тому, кто на ней сидит</p>
+        <button
+          type="button"
+          class="btn btn-secondary danger"
+          @click="deletePoint(selectedPoint.id)"
+        >
+          Удалить точку
+        </button>
+      </template>
+
+      <template v-else>
+        <div class="sheet-head">
+          <h3>
+            {{ selectedPoint.name || 'Точка' }}
+            <span class="hint small">· {{ fmt(selectedPoint.reward) }} очков</span>
+          </h3>
+          <button
+            type="button"
+            class="icon-btn plain"
+            aria-label="Закрыть"
+            @click="selectedId = null"
+          >
+            ✕
+          </button>
+        </div>
+        <div class="chips">
+          <button
+            v-for="a in layout?.alliances ?? []"
+            :key="a.id"
+            type="button"
+            class="chip"
+            :class="{ active: holderOf(selectedPoint.id) === a.id }"
+            :style="{ '--chip-color': a.color }"
+            @click="setHolder(selectedPoint.id, a.id)"
+          >
+            <span class="dot" :style="{ background: a.color }" />
+            {{ a.name || 'Без имени' }}
+          </button>
+          <button
+            type="button"
+            class="chip"
+            :class="{ active: holderOf(selectedPoint.id) === FREE }"
+            @click="setHolder(selectedPoint.id, FREE)"
+          >
+            <span class="dot" />
+            Свободна
+          </button>
+        </div>
+      </template>
+    </div>
+  </section>
+</template>
+
+<style scoped>
+.map-page {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* место под открытую шторку, чтобы она не закрывала низ страницы */
+.map-page.sheet-open {
+  padding-bottom: 260px;
+}
+
+.map-page h1 {
+  margin: 0;
+}
+
+.map-page > .hint {
+  margin: 0;
+}
+
+.back {
+  align-self: flex-start;
+  font-size: 14px;
+}
+
+.title-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.title-row h1 {
+  overflow-wrap: anywhere;
+}
+
+.presence {
+  flex: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--success);
+}
+
+.presence.off {
+  color: var(--hint);
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: var(--secondary-bg);
+}
+
+.card h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.card p {
+  margin: 0;
+}
+
+.small {
+  font-size: 13px;
+}
+
+.map-link {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  align-items: center;
+  padding: 8px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  font-weight: 600;
+}
+
+.grow {
+  flex: 1;
+}
+
+.toolbar,
+.zoom-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.zoom-bar {
+  gap: 4px;
+}
+
+.spacer {
+  flex: 1;
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.small-btn {
+  width: auto;
+  min-height: 40px;
+  padding: 8px 12px;
+  font-size: 14px;
+}
+
+.input {
+  min-width: 0;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 2px solid transparent;
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--text);
+  /* 16px+: иначе iOS зумит страницу при фокусе */
+  font: inherit;
+  font-size: 17px;
+  outline: none;
+}
+
+.input:focus {
+  border-color: var(--accent);
+}
+
+.input.name {
+  flex: 1;
+}
+
+.input.score {
+  width: 110px;
+  flex: none;
+}
+
+.segmented,
+.types {
+  display: grid;
+  gap: 6px;
+}
+
+.segmented.two {
+  grid-template-columns: 1fr 1fr;
+}
+
+.types {
+  grid-template-columns: repeat(7, 1fr);
+}
+
+.segmented button,
+.types button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 40px;
+  padding: 6px 2px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.types button span {
+  font-size: 11px;
+  color: var(--hint);
+}
+
+.segmented button.active,
+.types button.active {
+  border-color: var(--accent);
+}
+
+.viewport {
+  overflow: auto;
+  max-height: 75dvh;
+  border-radius: 12px;
+  background: var(--bg);
+  overscroll-behavior: contain;
+}
+
+.surface {
+  position: relative;
+  /* размеры точек — в cqw: точки растут вместе с масштабом карты */
+  container-type: inline-size;
+  background-color: #fff;
+  background-image:
+    linear-gradient(rgb(0 0 0 / 6%) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(0 0 0 / 6%) 1px, transparent 1px);
+  /* сетка 40×40 */
+  background-size: 2.5% 2.5%;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.surface.has-image {
+  background-image: none;
+}
+
+.surface.editing {
+  cursor: crosshair;
+}
+
+.surface.linking {
+  cursor: default;
+}
+
+.surface-image {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.surface-image.faded {
+  opacity: 0.55;
+}
+
+.surface-empty {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 0 24px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.links {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.links line {
+  stroke: #333;
+  stroke-width: 1.5;
+}
+
+.point {
+  --point-color: #fff;
+  position: absolute;
+  width: var(--size);
+  height: var(--size);
+  /* тап-зона не меньше 24px даже на общем плане */
+  min-width: 24px;
+  min-height: 24px;
+  transform: translate(-50%, -50%);
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.surface.editing .point {
+  cursor: grab;
+  touch-action: none;
+}
+
+.surface.linking .point {
+  cursor: pointer;
+}
+
+.point-body {
+  position: absolute;
+  inset: 0;
+  background: var(--point-color);
+  border: 0.25cqw solid #444;
+  box-shadow: 0 0.2cqw 0.6cqw rgb(0 0 0 / 30%);
+  transition:
+    transform 0.15s var(--ease-spring, ease),
+    background-color 0.3s ease;
+}
+
+.point.diamond .point-body {
+  transform: rotate(45deg) scale(0.78);
+}
+
+.point.circle .point-body {
+  border-radius: 50%;
+}
+
+.point.selected .point-body {
+  outline: 0.5cqw solid var(--accent);
+  outline-offset: 0.3cqw;
+}
+
+.point.diamond.selected .point-body {
+  transform: rotate(45deg) scale(0.9);
+}
+
+.point.square.selected .point-body,
+.point.circle.selected .point-body {
+  transform: scale(1.12);
+}
+
+.point-text {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: #111;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.point-name {
+  font-size: 0.95cqw;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+.point-reward {
+  font-size: 1.15cqw;
+  font-weight: 800;
+}
+
+.actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.actions .danger {
+  grid-column: 1 / -1;
+}
+
+.danger {
+  color: var(--danger);
+}
+
+.conflict {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  border-left: 4px solid var(--danger);
+}
+
+.legend,
+.activity {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.legend li {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 12px;
+  border-radius: 12px;
+  background: var(--bg);
+  overflow: hidden;
+}
+
+.legend li.leader {
+  box-shadow: inset 0 0 0 2px var(--success);
+}
+
+.legend-name {
+  flex: 1;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.legend-name .hint {
+  font-weight: 400;
+}
+
+.legend-sum {
+  font-size: 18px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.bar {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 4px;
+  transition: width 0.3s var(--ease-out, ease);
+}
+
+.activity li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.activity li > span:nth-child(2) {
+  flex: 1;
+}
+
+.dot {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px dashed var(--hint);
+}
+
+.dot[style] {
+  border: 0;
+}
+
+.dot.inline {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  vertical-align: baseline;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.color {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: none;
+  cursor: pointer;
+}
+
+.icon-btn {
+  flex: none;
+  width: 44px;
+  height: 44px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--bg);
+  color: var(--danger);
+  font: inherit;
+  font-size: 18px;
+  cursor: pointer;
+}
+
+.icon-btn.plain {
+  background: none;
+  color: var(--text);
+}
+
+.icon-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 16px calc(16px + var(--inset-bottom, 0px));
+  border-radius: 20px 20px 0 0;
+  background: var(--secondary-bg);
+  box-shadow: 0 -6px 24px rgb(0 0 0 / 25%);
+  animation: rise-in 0.25s var(--ease-out, ease) both;
+}
+
+.sheet h3 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.sheet p {
+  margin: 0;
+}
+
+.sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  --chip-color: var(--hint);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 2px solid transparent;
+  border-radius: 22px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.chip.active {
+  border-color: var(--chip-color);
+}
+</style>

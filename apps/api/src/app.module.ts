@@ -7,6 +7,7 @@ import { BotModule } from './bot/bot.module';
 import { THROTTLERS } from './common/throttling';
 import { validateEnv } from './config/env';
 import { HealthModule } from './health/health.module';
+import { OilMapModule } from './oil-map/oil-map.module';
 import { TelegramAuthGuard } from './participant/telegram-auth.guard';
 import { PrismaModule } from './prisma/prisma.module';
 import { QuizModule } from './quiz/quiz.module';
@@ -24,6 +25,7 @@ import { QuizModule } from './quiz/quiz.module';
     QuizModule,
     BotModule,
     AdminModule,
+    OilMapModule,
     ThrottlerModule.forRoot({ throttlers: THROTTLERS, errorMessage: 'Слишком много запросов' }),
   ],
   // порядок важен: лимит по участнику берёт telegramUser, который ставит TelegramAuthGuard

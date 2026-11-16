@@ -253,6 +253,9 @@ function mskLabel(msk: string, local: Date): string {
       Вышку забирает союз, набравший больше всех очков к сбросу. Очки сбрасываются в 02:50 по
       Москве. Всё время на странице — по твоему часовому поясу.
     </p>
+    <NuxtLink to="/map" class="btn btn-secondary rise-in" style="--i: 1">
+      🗺 Карта нефти: свои карты и итог по союзам
+    </NuxtLink>
 
     <div class="card rise-in" style="--i: 2">
       <h2>Вышка</h2>
