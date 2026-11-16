@@ -89,14 +89,57 @@ function commit() {
   now.value = at;
 }
 
-function setOurScore(value: string) {
-  commit();
-  state.ourScore = clean(value);
+/*
+ * Потолок для поля: с начала цикла вышка выдала всем вместе не больше totalRate × прошедшие минуты,
+ * значит одной стороне достаётся максимум это минус то, что уже набрали остальные.
+ */
+const cycleMinutes = computed(() =>
+  cycle.value.paused ? 0 : OIL_DAY_MINUTES - cycle.value.minutesLeft,
+);
+const cycleCap = computed(() => totalRate.value * cycleMinutes.value);
+const enemiesSum = computed(() => enemiesLive.value.reduce((sum, e) => sum + e.score, 0));
+
+const ourMax = computed(() => Math.max(cycleCap.value - enemiesSum.value, 0));
+
+function enemyMax(index: number): number {
+  const others = enemiesSum.value - (enemiesLive.value[index]?.score ?? 0);
+  return Math.max(cycleCap.value - ourLive.value - others, 0);
 }
 
-function setEnemyScore(index: number, value: string) {
+/*
+ * Пока поле в фокусе, показываем введённый текст, а не живой счёт: иначе тик таймера
+ * перерисовывает страницу и Vue возвращает в поле старое значение посреди ввода.
+ */
+const drafts = reactive<Record<string, string>>({});
+
+function shown(key: string, live: number | undefined): string | number | undefined {
+  return key in drafts ? drafts[key] : live;
+}
+
+function setDraft(key: string, event: Event) {
+  drafts[key] = (event.target as HTMLInputElement).value;
+}
+
+function dropDraft(key: string) {
+  delete drafts[key];
+}
+
+// обрезанное значение возвращаем в поле: если computed не изменился, Vue сам его не перерисует
+function setOurScore(input: HTMLInputElement) {
+  const max = ourMax.value;
   commit();
-  state.enemies[index]!.score = clean(value);
+  state.ourScore = clean(input.value, max);
+  input.value = String(state.ourScore);
+  dropDraft(OIL_US);
+}
+
+function setEnemyScore(index: number, input: HTMLInputElement) {
+  const max = enemyMax(index);
+  commit();
+  const enemy = state.enemies[index]!;
+  enemy.score = clean(input.value, max);
+  input.value = String(enemy.score);
+  dropDraft(enemy.id);
 }
 
 function setHolder(point: number, holder: OilHolder) {
@@ -149,6 +192,16 @@ const analysis = computed(() =>
 );
 
 const hold = computed(() => analysis.value.hold);
+
+// потолок каждого врага: прямо сейчас займёт все точки и удержит до сброса
+const enemyCeilings = computed(() => {
+  const gain = totalRate.value * minutesLeft.value;
+  return analysis.value.enemies.map((e) => ({
+    id: e.id,
+    name: e.name || 'Враг',
+    score: e.score + gain,
+  }));
+});
 const totalRate = computed(() => rates.value.reduce((sum, r) => sum + r, 0));
 
 // сколько времени не хватает до сброса, чтобы досидеть до гарантии (0 — успеваем, null — точек нет)
@@ -249,12 +302,16 @@ function mskLabel(msk: string, local: Date): string {
         <span class="side-name us">Мы</span>
         <span class="rate-badge">+{{ oilRate(rates, state.holders, OIL_US) }}/мин</span>
         <input
-          :value="ourLive"
+          :value="shown(OIL_US, ourLive)"
           class="input score"
           type="number"
           inputmode="numeric"
           min="0"
-          @change="setOurScore(($event.target as HTMLInputElement).value)"
+          :max="ourMax"
+          :title="`Максимум сейчас: ${fmt(ourMax)}`"
+          @input="setDraft(OIL_US, $event)"
+          @blur="dropDraft(OIL_US)"
+          @change="setOurScore($event.target as HTMLInputElement)"
         />
       </div>
       <div v-for="(enemy, i) in state.enemies" :key="enemy.id" class="side">
@@ -267,12 +324,16 @@ function mskLabel(msk: string, local: Date): string {
         />
         <span class="rate-badge">+{{ oilRate(rates, state.holders, enemy.id) }}/мин</span>
         <input
-          :value="enemiesLive[i]?.score"
+          :value="shown(enemy.id, enemiesLive[i]?.score)"
           class="input score"
           type="number"
           inputmode="numeric"
           min="0"
-          @change="setEnemyScore(i, ($event.target as HTMLInputElement).value)"
+          :max="enemyMax(i)"
+          :title="`Максимум сейчас: ${fmt(enemyMax(i))}`"
+          @input="setDraft(enemy.id, $event)"
+          @blur="dropDraft(enemy.id)"
+          @change="setEnemyScore(i, $event.target as HTMLInputElement)"
         />
         <button
           type="button"
@@ -284,6 +345,10 @@ function mskLabel(msk: string, local: Date): string {
         </button>
       </div>
       <button type="button" class="btn btn-secondary" @click="addEnemy">+ Добавить врага</button>
+      <p class="hint small">
+        С начала цикла прошло {{ formatOilMinutes(cycleMinutes) }}: все вместе могли набрать не больше
+        {{ fmt(cycleCap) }}. Больше этого поле не примет.
+      </p>
       <p v-if="overMax" class="error-text">
         Больше {{ fmt(maxPerDay) }} за сутки на этой вышке набрать нельзя: проверь очки
       </p>
@@ -324,6 +389,7 @@ function mskLabel(msk: string, local: Date): string {
             <th>Союз</th>
             <th>Сейчас</th>
             <th>/мин</th>
+            <th>Наберёт</th>
             <th>К сбросу</th>
           </tr>
         </thead>
@@ -336,6 +402,7 @@ function mskLabel(msk: string, local: Date): string {
             <td>{{ side.name || 'Враг' }}</td>
             <td>{{ fmt(side.score) }}</td>
             <td>{{ side.rate }}</td>
+            <td>+{{ fmt(side.final - side.score) }}</td>
             <td class="final">{{ fmt(side.final) }}</td>
           </tr>
         </tbody>
@@ -410,6 +477,10 @@ function mskLabel(msk: string, local: Date): string {
           <div v-if="hold.minutes">
             <dt>Должно быть у нас к уходу</dt>
             <dd>{{ fmt(hold.target) }}</dd>
+          </div>
+          <div v-for="e in enemyCeilings" :key="e.id">
+            <dt>Максимум {{ e.name }}, если займёт всю вышку сейчас (+{{ totalRate }}/мин)</dt>
+            <dd>{{ fmt(e.score) }}</dd>
           </div>
           <div>
             <dt>У нас сейчас</dt>
