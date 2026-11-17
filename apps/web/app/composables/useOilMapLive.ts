@@ -2,6 +2,7 @@ import type { OilMapEvent, OilMapResponse } from '@memequiz/shared';
 
 export interface OilMapActivity {
   key: number;
+  day: number;
   pointId: string;
   holder: string | null;
   by: string | null;
@@ -48,15 +49,18 @@ export function useOilMapLive(mapId: Ref<string | null>) {
   function handle(event: OilMapEvent) {
     const current = map.value;
     switch (event.type) {
-      case 'holder':
-        if (!current) return;
-        if (event.holder) current.holders[event.pointId] = event.holder;
-        else delete current.holders[event.pointId];
+      case 'holder': {
+        const day = current?.days[event.day - 1];
+        // дня ещё нет — значит его только что добавили: перечитаем по событию layout
+        if (!day) return;
+        if (event.holder) day[event.pointId] = event.holder;
+        else delete day[event.pointId];
         activity.value = [
           { key: ++activitySeq, ...event, at: new Date(event.at) },
           ...activity.value,
         ].slice(0, ACTIVITY_MAX);
         return;
+      }
       case 'layout':
         if (!current || event.version > current.version) void load();
         return;
@@ -134,21 +138,22 @@ export function useOilMapLive(mapId: Ref<string | null>) {
     disconnect();
   });
 
-  async function setHolder(pointId: string, holder: string | null, by: string) {
+  async function setHolder(day: number, pointId: string, holder: string | null, by: string) {
     const current = map.value;
-    if (!current) return;
-    const previous = current.holders[pointId] ?? null;
-    if (holder) current.holders[pointId] = holder;
-    else delete current.holders[pointId];
+    const holders = current?.days[day - 1];
+    if (!current || !holders) return;
+    const previous = holders[pointId] ?? null;
+    if (holder) holders[pointId] = holder;
+    else delete holders[pointId];
     try {
       await api(`/oil-maps/${current.id}/holders/${pointId}`, {
         method: 'PUT',
-        body: { holder, by: by || undefined },
+        body: { holder, day, by: by || undefined },
       });
     } catch (e) {
-      // не прошло: возвращаем как было и перечитываем — могли поменять раскладку
-      if (previous) current.holders[pointId] = previous;
-      else delete current.holders[pointId];
+      // не прошло: возвращаем как было и перечитываем — могли поменять раскладку или дни
+      if (previous) holders[pointId] = previous;
+      else delete holders[pointId];
       void load(current.id);
       throw e;
     }

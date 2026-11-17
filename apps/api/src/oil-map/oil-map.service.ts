@@ -36,10 +36,15 @@ const WITHOUT_IMAGE = { omit: { image: true }, include: { holders: true } } as c
 type MapRow = Prisma.OilMapGetPayload<typeof WITHOUT_IMAGE>;
 
 function toResponse(map: MapRow, owner: Owner): OilMapResponse {
+  const days: Record<string, string>[] = Array.from({ length: map.days }, () => ({}));
+  for (const h of map.holders) {
+    const day = days[h.day - 1];
+    if (day) day[h.pointId] = h.allianceId;
+  }
   return {
     id: map.id,
     layout: map.layout as OilMapLayout,
-    holders: Object.fromEntries(map.holders.map((h) => [h.pointId, h.allianceId])),
+    days,
     version: map.version,
     imageVersion: map.imageType ? map.imageVersion : 0,
     isOwner: map.ownerSource === owner.source && map.ownerId === owner.externalId,
@@ -74,18 +79,32 @@ export class OilMapService {
     if (!map) throw new NotFoundException('Карта не найдена');
   }
 
-  async create(owner: Owner, layout: OilMapLayout): Promise<OilMapResponse> {
+  async create(owner: Owner, layout: OilMapLayout, from?: string): Promise<OilMapResponse> {
     const count = await this.prisma.oilMap.count({ where: ownerWhere(owner) });
     if (count >= OIL_MAP_LIMITS.maps) {
       throw new BadRequestException(`Не больше ${OIL_MAP_LIMITS.maps} карт: удали старые`);
     }
+
+    // основа — любая карта по ссылке: раскладка и фон у неё и так открыты всем
+    const base = from
+      ? await this.prisma.oilMap.findUnique({
+          where: { id: from },
+          select: { layout: true, image: true, imageType: true },
+        })
+      : null;
+    if (from && !base) throw new NotFoundException('Карта-основа не найдена');
+    const finalLayout = base ? { ...(base.layout as OilMapLayout), name: layout.name } : layout;
+
     const map = await this.prisma.oilMap.create({
       data: {
         id: newMapId(),
         ownerSource: owner.source,
         ownerId: owner.externalId,
-        name: layout.name,
-        layout: layout as Prisma.InputJsonObject,
+        name: finalLayout.name,
+        layout: finalLayout as Prisma.InputJsonObject,
+        ...(base?.image && base.imageType
+          ? { image: base.image, imageType: base.imageType, imageVersion: 1 }
+          : {}),
       },
       ...WITHOUT_IMAGE,
     });
@@ -133,12 +152,17 @@ export class OilMapService {
   // держателя отмечает любой со ссылкой; одна строка на точку — разные точки не конфликтуют
   async setHolder(
     id: string,
+    day: number,
     pointId: string,
     holder: string | null,
     by: string | null,
   ): Promise<void> {
-    const map = await this.prisma.oilMap.findUnique({ where: { id }, select: { layout: true } });
+    const map = await this.prisma.oilMap.findUnique({
+      where: { id },
+      select: { layout: true, days: true },
+    });
     if (!map) throw new NotFoundException('Карта не найдена');
+    if (day > map.days) throw new NotFoundException('Такого дня уже нет на карте');
     const layout = map.layout as OilMapLayout;
     if (!layout.points.some((p) => p.id === pointId)) {
       throw new NotFoundException('Этой точки уже нет на карте');
@@ -149,15 +173,16 @@ export class OilMapService {
 
     if (holder) {
       await this.prisma.oilMapHolder.upsert({
-        where: { mapId_pointId: { mapId: id, pointId } },
-        create: { mapId: id, pointId, allianceId: holder, updatedBy: by },
+        where: { mapId_day_pointId: { mapId: id, day, pointId } },
+        create: { mapId: id, day, pointId, allianceId: holder, updatedBy: by },
         update: { allianceId: holder, updatedBy: by },
       });
     } else {
-      await this.prisma.oilMapHolder.deleteMany({ where: { mapId: id, pointId } });
+      await this.prisma.oilMapHolder.deleteMany({ where: { mapId: id, day, pointId } });
     }
     this.events.emit(id, {
       type: 'holder',
+      day,
       pointId,
       holder,
       by,
@@ -165,10 +190,53 @@ export class OilMapService {
     });
   }
 
-  async clearHolders(id: string, owner: Owner): Promise<void> {
+  async clearHolders(id: string, owner: Owner, day: number): Promise<void> {
     await this.assertOwner(id, owner);
-    await this.prisma.oilMapHolder.deleteMany({ where: { mapId: id } });
-    // как после сохранения раскладки: клиенты перечитают карту целиком
+    await this.prisma.oilMapHolder.deleteMany({ where: { mapId: id, day } });
+    await this.bumpVersion(id);
+  }
+
+  // новый день начинается с расстановки последнего: обычно точки остаются у тех же союзов
+  async addDay(id: string): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      const map = await tx.oilMap.findUnique({ where: { id }, select: { days: true } });
+      if (!map) throw new NotFoundException('Карта не найдена');
+      if (map.days >= OIL_MAP_LIMITS.days) {
+        throw new BadRequestException(`Не больше ${OIL_MAP_LIMITS.days} дней на карте`);
+      }
+      // условие на days: два одновременных «новый день» не создадут дубль
+      const { count } = await tx.oilMap.updateMany({
+        where: { id, days: map.days },
+        data: { days: { increment: 1 } },
+      });
+      if (!count) throw new ConflictException('День уже добавили — обнови карту');
+      const last = await tx.oilMapHolder.findMany({ where: { mapId: id, day: map.days } });
+      await tx.oilMapHolder.createMany({
+        data: last.map((h) => ({
+          mapId: id,
+          day: map.days + 1,
+          pointId: h.pointId,
+          allianceId: h.allianceId,
+          updatedBy: h.updatedBy,
+        })),
+      });
+    });
+    await this.bumpVersion(id);
+  }
+
+  async removeLastDay(id: string, owner: Owner): Promise<void> {
+    await this.assertOwner(id, owner);
+    await this.prisma.$transaction(async (tx) => {
+      const map = await tx.oilMap.findUniqueOrThrow({ where: { id }, select: { days: true } });
+      if (map.days <= 1) throw new BadRequestException('Единственный день не удалить');
+      await tx.oilMapHolder.deleteMany({ where: { mapId: id, day: map.days } });
+      await tx.oilMap.update({ where: { id }, data: { days: map.days - 1 } });
+    });
+    await this.bumpVersion(id);
+  }
+
+  // как после сохранения раскладки: клиенты перечитают карту целиком
+  private async bumpVersion(id: string): Promise<void> {
     const map = await this.prisma.oilMap.update({
       where: { id },
       data: { version: { increment: 1 } },

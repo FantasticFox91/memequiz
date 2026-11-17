@@ -8,8 +8,11 @@ import type {
   OilPointType,
 } from '@memequiz/shared';
 import { formatOilClock, formatOilMinutes, oilCycle } from '~/utils/oil';
+import { OIL_MAP_TEMPLATES, type OilMapTemplate } from '~/utils/oil-map-templates';
 
 useHead({ title: 'Карта нефти · MemeQuiz' });
+// на десктопе до 1440px: карта слева, легенды справа
+definePageMeta({ wide: true });
 
 /*
  * Общие карты нефти. Владелец в конструкторе расставляет точки (XS…XXL), связи и союзы;
@@ -19,7 +22,7 @@ useHead({ title: 'Карта нефти · MemeQuiz' });
 
 const FREE = 'free';
 const IMAGE_MAX_SIDE = 1600;
-const ZOOMS = [1, 1.5, 2, 3, 4];
+const ZOOMS = [1, 1.5, 2, 3, 4, 6, 8];
 const RECENT_KEY = 'oil-map-recent';
 const RECENT_MAX = 10;
 const PALETTE = [
@@ -35,15 +38,20 @@ const PALETTE = [
 
 type PointShape = 'diamond' | 'square' | 'circle';
 
-// размер — в процентах ширины карты
-const POINT_TYPES: Record<OilPointType, { reward: number; shape: PointShape; size: number }> = {
-  XS: { reward: 100, shape: 'diamond', size: 4.2 },
-  S: { reward: 300, shape: 'square', size: 4.4 },
-  M: { reward: 375, shape: 'diamond', size: 4.6 },
-  L: { reward: 600, shape: 'square', size: 4.8 },
-  XL: { reward: 1000, shape: 'square', size: 5 },
-  XXL: { reward: 2000, shape: 'square', size: 6 },
-  '★': { reward: 0, shape: 'circle', size: 4.6 },
+// размер — в процентах ширины карты; label — префикс авто-имени («S-03»)
+const POINT_TYPES: Record<
+  OilPointType,
+  { reward: number; shape: PointShape; size: number; label?: string }
+> = {
+  XS: { reward: 100, shape: 'diamond', size: 2.7 },
+  'S◆': { reward: 200, shape: 'diamond', size: 2.85, label: 'S' },
+  S: { reward: 300, shape: 'square', size: 2.85 },
+  M: { reward: 375, shape: 'diamond', size: 3 },
+  'M■': { reward: 400, shape: 'square', size: 3, label: 'M' },
+  L: { reward: 600, shape: 'square', size: 3.1 },
+  XL: { reward: 1000, shape: 'square', size: 3.25 },
+  XXL: { reward: 2000, shape: 'square', size: 3.9 },
+  '★': { reward: 0, shape: 'circle', size: 3 },
 };
 const TYPE_KEYS = Object.keys(POINT_TYPES) as OilPointType[];
 
@@ -58,8 +66,8 @@ function defaultLayout(name: string): OilMapLayout {
     points: [],
     links: [],
     alliances: [
-      { id: 'us', name: 'Мы', color: PALETTE[0]! },
-      { id: uid('a'), name: 'Враг 1', color: PALETTE[1]! },
+      { id: 'us', name: '1', color: PALETTE[0]! },
+      { id: uid('a'), name: '2', color: PALETTE[1]! },
     ],
   };
 }
@@ -152,14 +160,45 @@ function openByCode() {
   void router.push({ query: { id: match[1] } });
 }
 
+// основа для новой карты: '' — пустая, иначе id карты, которую копируем
+const baseId = ref('');
+const baseOptions = computed<RecentMap[]>(() => [
+  ...myMaps.value.map((m) => ({ id: m.id, name: m.name })),
+  ...otherMaps.value,
+]);
+
+// шаблон → раскладка: очки — стандартные для типа, держателей нет
+function templateLayout(template: OilMapTemplate): OilMapLayout {
+  return {
+    name: template.name,
+    aspect: 1,
+    points: template.points.map((p) => ({
+      id: p.key,
+      type: p.type,
+      x: p.x,
+      y: p.y,
+      reward: POINT_TYPES[p.type].reward,
+      name: p.name,
+    })),
+    links: template.links.map(([a, b]) => [a, b]),
+    alliances: template.alliances.map((a) => ({ ...a })),
+  };
+}
+
 async function createMap() {
   creating.value = true;
   listError.value = '';
+  const template = OIL_MAP_TEMPLATES.find((t) => `tpl:${t.id}` === baseId.value);
+  const base = baseOptions.value.find((m) => m.id === baseId.value);
+  const name = base ? `${base.name.slice(0, 32)} (копия)` : `Карта ${myMaps.value.length + 1}`;
   try {
     const created = await api<OilMapResponse>('/oil-maps', {
       method: 'POST',
-      body: { layout: defaultLayout(`Карта ${myMaps.value.length + 1}`) },
+      body: template
+        ? { layout: templateLayout(template) }
+        : { layout: defaultLayout(name), ...(base ? { from: base.id } : {}) },
     });
+    baseId.value = '';
     map.value = created;
     status.value = 'ready';
     await router.push({ query: { id: created.id } });
@@ -235,7 +274,10 @@ async function saveEdit() {
   if (!edited || !id || saving.value) return;
   saving.value = true;
   errorText.value = '';
-  const body = { version: draftVersion.value, layout: { ...edited, name: edited.name.trim() || 'Без названия' } };
+  const body = {
+    version: draftVersion.value,
+    layout: { ...edited, name: edited.name.trim() || 'Без названия' },
+  };
   try {
     const saved = await api<OilMapResponse>(`/oil-maps/${id}`, { method: 'PUT', body });
 
@@ -363,7 +405,8 @@ const showImage = ref(true);
 
 // ---------- масштаб ----------
 
-const zoomIndex = ref(0);
+// по умолчанию ×4
+const zoomIndex = ref(ZOOMS.indexOf(4));
 const zoom = computed(() => ZOOMS[zoomIndex.value]!);
 const viewport = ref<HTMLElement>();
 
@@ -395,13 +438,147 @@ function toMapCoords(event: { clientX: number; clientY: number }): { x: number; 
   };
 }
 
+// ---------- магнит: выравнивание по другим точкам и по клеткам сетки ----------
+
+// сетка фона 80×80 (см. .surface background-size)
+const GRID = 80;
+// на каком расстоянии в экранных пикселях точка «присасывается»
+const SNAP_PX = 9;
+
+const snapOn = ref(true);
+// направляющие, к которым притянулась точка: отрезки в % карты
+const guides = ref<{ key: string; x1: number; y1: number; x2: number; y2: number }[]>([]);
+let guidesTimer: ReturnType<typeof setTimeout> | undefined;
+
+// прямая a·x + b·y = c в пикселях; from — точка, от которой идёт направляющая
+interface SnapLine {
+  a: number;
+  b: number;
+  c: number;
+  from?: { x: number; y: number };
+}
+
+const lineDistance = (l: SnapLine, x: number, y: number) =>
+  Math.abs(l.a * x + l.b * y - l.c) / Math.hypot(l.a, l.b);
+
+function intersect(l1: SnapLine, l2: SnapLine): { x: number; y: number } | null {
+  const det = l1.a * l2.b - l2.a * l1.b;
+  if (Math.abs(det) < 1e-9) return null;
+  return { x: (l1.c * l2.b - l2.c * l1.b) / det, y: (l1.a * l2.c - l2.a * l1.c) / det };
+}
+
+function project(l: SnapLine, x: number, y: number): { x: number; y: number } {
+  const k = (l.a * x + l.b * y - l.c) / (l.a * l.a + l.b * l.b);
+  return { x: x - k * l.a, y: y - k * l.b };
+}
+
+/**
+ * Притягивает позицию к вертикали, горизонтали и диагоналям (45°) других точек,
+ * к пересечениям этих линий и к центрам клеток. Считаем в экранных пикселях:
+ * диагональ должна быть 45° на экране, а у карты бывает любое соотношение сторон.
+ */
+function snap(
+  raw: { x: number; y: number },
+  excludeId: string | null,
+  disabled: boolean,
+): { x: number; y: number } {
+  const target = draft.value;
+  const rect = surface.value?.getBoundingClientRect();
+  if (!snapOn.value || disabled || !target || !rect?.width) {
+    guides.value = [];
+    return raw;
+  }
+  const W = rect.width;
+  const H = rect.height;
+  const px = (raw.x / 100) * W;
+  const py = (raw.y / 100) * H;
+
+  const lines: SnapLine[] = [];
+  for (const q of target.points) {
+    if (q.id === excludeId) continue;
+    const qx = (q.x / 100) * W;
+    const qy = (q.y / 100) * H;
+    const from = { x: qx, y: qy };
+    lines.push({ a: 1, b: 0, c: qx, from }); // вертикаль
+    lines.push({ a: 0, b: 1, c: qy, from }); // горизонталь
+    lines.push({ a: -1, b: 1, c: qy - qx, from }); // диагональ ↘
+    lines.push({ a: 1, b: 1, c: qy + qx, from }); // диагональ ↗
+  }
+  // линии через центры ближайших клеток: слабее линий точек, нужны для пересечений
+  const cellW = W / GRID;
+  const cellH = H / GRID;
+  const gx = (Math.floor(px / cellW) + 0.5) * cellW;
+  const gy = (Math.floor(py / cellH) + 0.5) * cellH;
+  const gridLines: SnapLine[] = [
+    { a: 1, b: 0, c: gx },
+    { a: 0, b: 1, c: gy },
+  ];
+
+  const near = lines
+    .map((l) => ({ l, d: lineDistance(l, px, py) }))
+    .filter((n) => n.d < SNAP_PX)
+    .sort((m, n) => m.d - n.d);
+
+  let result = { x: px, y: py };
+  let used: SnapLine[] = [];
+  const first = near[0]?.l;
+  if (first) {
+    // пересечение с другой линией (точки или клетки) рядом — встаём ровно в него
+    let best: { p: { x: number; y: number }; l: SnapLine; d: number } | null = null;
+    for (const l of [...near.slice(1).map((n) => n.l), ...gridLines]) {
+      const p = intersect(first, l);
+      if (!p) continue;
+      const d = Math.hypot(p.x - px, p.y - py);
+      // линии точек приоритетнее: у клеточных порог меньше
+      const limit = l.from ? SNAP_PX * 1.5 : SNAP_PX;
+      if (d < limit && (!best || d < best.d)) best = { p, l, d };
+    }
+    if (best) {
+      result = best.p;
+      used = [first, best.l];
+    } else {
+      result = project(first, px, py);
+      used = [first];
+    }
+  } else {
+    // ни одной линии рядом — только центр клетки, по каждой оси отдельно
+    if (Math.abs(px - gx) < SNAP_PX) result.x = gx;
+    if (Math.abs(py - gy) < SNAP_PX) result.y = gy;
+  }
+
+  const clamp = (v: number) => Math.round(Math.min(Math.max(v, 0), 100) * 100) / 100;
+  const snapped = { x: clamp((result.x / W) * 100), y: clamp((result.y / H) * 100) };
+
+  guides.value = used.flatMap((l, i) =>
+    l.from
+      ? [
+          {
+            key: `g${i}`,
+            x1: (l.from.x / W) * 100,
+            y1: (l.from.y / H) * 100,
+            x2: snapped.x,
+            y2: snapped.y,
+          },
+        ]
+      : [],
+  );
+  return snapped;
+}
+
+function flashGuides() {
+  clearTimeout(guidesTimer);
+  guidesTimer = setTimeout(() => (guides.value = []), 700);
+}
+
 // «S-07»: следующий свободный номер этого типа
 function nextName(target: OilMapLayout, type: OilPointType): string {
   if (type === '★') return '';
-  const used = new Set(target.points.filter((p) => p.type === type).map((p) => p.name));
+  // S◆ и S делят префикс «S», поэтому занятые имена смотрим по всем точкам
+  const prefix = POINT_TYPES[type].label ?? type;
+  const used = new Set(target.points.map((p) => p.name));
   let n = 1;
-  while (used.has(`${type}-${String(n).padStart(2, '0')}`)) n++;
-  return `${type}-${String(n).padStart(2, '0')}`;
+  while (used.has(`${prefix}-${String(n).padStart(2, '0')}`)) n++;
+  return `${prefix}-${String(n).padStart(2, '0')}`;
 }
 
 function onSurfaceClick(event: MouseEvent) {
@@ -419,10 +596,11 @@ function onSurfaceClick(event: MouseEvent) {
   target.points.push({
     id: uid('pt'),
     type: newType.value,
-    ...toMapCoords(event),
+    ...snap(toMapCoords(event), null, event.altKey),
     reward: POINT_TYPES[newType.value].reward,
     name: nextName(target, newType.value),
   });
+  flashGuides();
   haptics.impact('light');
 }
 
@@ -443,11 +621,15 @@ function onPointMove(event: PointerEvent, point: OilMapPoint) {
     return;
   }
   drag.moved = true;
-  Object.assign(point, toMapCoords(event));
+  clearTimeout(guidesTimer);
+  Object.assign(point, snap(toMapCoords(event), point.id, event.altKey));
 }
 
 function onPointUp() {
-  if (drag?.moved) suppressClick = true;
+  if (drag?.moved) {
+    suppressClick = true;
+    flashGuides();
+  }
   drag = null;
 }
 
@@ -546,7 +728,7 @@ function addAlliance() {
   const used = new Set(target.alliances.map((a) => a.color));
   const color =
     PALETTE.find((c) => !used.has(c)) ?? PALETTE[target.alliances.length % PALETTE.length]!;
-  target.alliances.push({ id: uid('a'), name: `Союз ${target.alliances.length + 1}`, color });
+  target.alliances.push({ id: uid('a'), name: String(target.alliances.length + 1), color });
 }
 
 function removeAlliance(id: string) {
@@ -557,9 +739,68 @@ function removeAlliance(id: string) {
 
 const allianceById = computed(() => new Map((layout.value?.alliances ?? []).map((a) => [a.id, a])));
 
+// ---------- дни: у каждого дня своя расстановка ----------
+
+const daysCount = computed(() => map.value?.days.length ?? 1);
+// выбранный день, с 1
+const day = ref(1);
+
+// новая карта — открываем последний день; добавили день, пока смотрели последний, — идём за ним
+watch(
+  () => [map.value?.id, daysCount.value] as const,
+  ([id, count], previous) => {
+    const [prevId, prevCount] = previous ?? [];
+    if (id !== prevId || (prevCount !== undefined && day.value === prevCount)) day.value = count;
+    else day.value = Math.min(day.value, count);
+  },
+  { immediate: true },
+);
+
+function goDay(next: number) {
+  day.value = Math.min(Math.max(next, 1), daysCount.value);
+  selectedId.value = null;
+  haptics.selection();
+}
+
+const dayBusy = ref(false);
+async function addDay() {
+  const id = map.value?.id;
+  if (!id || dayBusy.value) return;
+  dayBusy.value = true;
+  try {
+    await api(`/oil-maps/${id}/days`, { method: 'POST' });
+    await live.load(id);
+    day.value = daysCount.value;
+    errorText.value = '';
+    haptics.notify('success');
+  } catch (e) {
+    errorText.value = errorMessage(e);
+    // день мог добавить кто-то другой одновременно: показываем актуальное
+    void live.load(id);
+  } finally {
+    dayBusy.value = false;
+  }
+}
+
+const confirmRemoveDay = ref(false);
+async function removeLastDay() {
+  const id = map.value?.id;
+  if (!id || dayBusy.value || !armConfirm(confirmRemoveDay)) return;
+  dayBusy.value = true;
+  try {
+    await api(`/oil-maps/${id}/days/last`, { method: 'DELETE' });
+    await live.load(id);
+    haptics.impact('medium');
+  } catch (e) {
+    errorText.value = errorMessage(e);
+  } finally {
+    dayBusy.value = false;
+  }
+}
+
 // держатель, которого нет среди союзов раскладки (удалён в черновике), — как свободная точка
-function holderOf(pointId: string): string {
-  const holder = map.value?.holders[pointId];
+function holderOf(pointId: string, d = day.value): string {
+  const holder = map.value?.days[d - 1]?.[pointId];
   return holder && allianceById.value.has(holder) ? holder : FREE;
 }
 
@@ -571,7 +812,12 @@ async function setHolder(pointId: string, allianceId: string) {
   selectedId.value = null;
   haptics.selection();
   try {
-    await live.setHolder(pointId, allianceId === FREE ? null : allianceId, participant.nickname);
+    await live.setHolder(
+      day.value,
+      pointId,
+      allianceId === FREE ? null : allianceId,
+      participant.nickname,
+    );
     errorText.value = '';
   } catch (e) {
     errorText.value = errorMessage(e);
@@ -584,7 +830,7 @@ async function clearHolders() {
   const id = map.value?.id;
   if (!id || !armConfirm(confirmClear)) return;
   try {
-    await api(`/oil-maps/${id}/holders`, { method: 'DELETE' });
+    await api(`/oil-maps/${id}/holders`, { method: 'DELETE', query: { day: day.value } });
     await live.load(id);
     haptics.impact('medium');
   } catch (e) {
@@ -661,9 +907,28 @@ const legend = computed(() => {
   };
 });
 
+// всего за все дни: каждый день союз получает очки своих точек этого дня
+const totals = computed(() => {
+  const points = layout.value?.points ?? [];
+  const sums = new Map<string, number>();
+  for (let d = 1; d <= daysCount.value; d++) {
+    for (const p of points) {
+      const holder = holderOf(p.id, d);
+      if (holder !== FREE) sums.set(holder, (sums.get(holder) ?? 0) + p.reward);
+    }
+  }
+  const rows = (layout.value?.alliances ?? [])
+    .map((alliance) => ({ ...alliance, sum: sums.get(alliance.id) ?? 0 }))
+    .sort((a, b) => b.sum - a.sum);
+  const max = rows[0]?.sum ?? 0;
+  const leader = rows[0] && max > 0 && max > (rows[1]?.sum ?? 0) ? rows[0].id : null;
+  return { rows, max, leader };
+});
+
 const activityRows = computed(() =>
   activity.value.map((a) => ({
     key: a.key,
+    day: a.day,
     by: a.by,
     point: layout.value?.points.find((p) => p.id === a.pointId)?.name || 'точка',
     holder: a.holder ? allianceById.value.get(a.holder) : null,
@@ -674,12 +939,21 @@ const activityRows = computed(() =>
 const cycle = computed(() => oilCycle(now.value));
 const fmt = (n: number) => n.toLocaleString('ru-RU');
 const share100 = (n: number) => (legend.value.total ? (n / legend.value.total) * 100 : 0);
+// 1 день, 2 дня, 5 дней
+function plural(n: number, [one, few, many]: [string, string, string]): string {
+  const m10 = n % 10;
+  const m100 = n % 100;
+  if (m10 === 1 && m100 !== 11) return one;
+  if (m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14)) return few;
+  return many;
+}
+const shareOfMax = (n: number) => (totals.value.max ? (n / totals.value.max) * 100 : 0);
 const formatDate = (iso: string) =>
   new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' });
 </script>
 
 <template>
-  <section class="map-page" :class="{ 'sheet-open': selectedPoint }">
+  <section class="map-page" :class="{ 'sheet-open': selectedPoint, list: !mapId }">
     <NuxtLink :to="mapId ? '/map' : '/oil'" class="back rise-in">
       ← {{ mapId ? 'Все карты' : 'Калькулятор нефти' }}
     </NuxtLink>
@@ -699,6 +973,16 @@ const formatDate = (iso: string) =>
           <span class="hint small">{{ formatDate(m.updatedAt) }}</span>
         </NuxtLink>
         <p v-if="!myMaps.length" class="hint small">Пока нет своих карт</p>
+        <label class="base-pick">
+          <span class="hint small">Основа</span>
+          <select v-model="baseId" class="input">
+            <option value="">Пустая карта</option>
+            <option v-for="t in OIL_MAP_TEMPLATES" :key="t.id" :value="`tpl:${t.id}`">
+              Шаблон: {{ t.name }}
+            </option>
+            <option v-for="m in baseOptions" :key="m.id" :value="m.id">Копия: {{ m.name }}</option>
+          </select>
+        </label>
         <button type="button" class="btn" :disabled="creating" @click="createMap">
           {{ creating ? 'Создаём…' : '+ Новая карта' }}
         </button>
@@ -739,7 +1023,14 @@ const formatDate = (iso: string) =>
     <div v-else-if="status === 'missing'" class="card">
       <h2>Карта не найдена</h2>
       <p class="hint small">Её удалили или в ссылке ошибка.</p>
-      <button type="button" class="btn btn-secondary" @click="forgetRecent(mapId!); router.push({ query: {} })">
+      <button
+        type="button"
+        class="btn btn-secondary"
+        @click="
+          forgetRecent(mapId!);
+          router.push({ query: {} });
+        "
+      >
         К списку карт
       </button>
     </div>
@@ -749,306 +1040,416 @@ const formatDate = (iso: string) =>
     </div>
 
     <!-- ===== карта ===== -->
-    <template v-else>
-      <div class="title-row rise-in">
-        <h1>{{ layout.name }}</h1>
-        <span class="presence" :class="{ off: !connected }">
-          {{ connected ? `● ${online} онлайн` : '○ переподключаемся…' }}
-        </span>
-      </div>
-
-      <div class="card rise-in" style="--i: 1">
-        <div v-if="!editing" class="toolbar">
-          <button type="button" class="btn btn-secondary small-btn" @click="share">
-            🔗 Поделиться
-          </button>
-          <button
-            v-if="map.isOwner"
-            type="button"
-            class="btn btn-secondary small-btn"
-            @click="startEdit"
-          >
-            ✏️ Конструктор
-          </button>
-          <span v-if="shareNote" class="hint small">{{ shareNote }}</span>
+    <div v-else class="map-grid">
+      <div class="map-main">
+        <div class="title-row rise-in">
+          <h1>{{ layout.name }}</h1>
+          <span class="presence" :class="{ off: !connected }">
+            {{ connected ? `● ${online} онлайн` : '○ переподключаемся…' }}
+          </span>
         </div>
 
-        <template v-else-if="draft">
-          <input
-            v-model="draft.name"
-            class="input"
-            type="text"
-            maxlength="40"
-            placeholder="Название карты"
-          />
-          <div class="segmented two">
-            <button
-              type="button"
-              :class="{ active: tool === 'points' }"
-              @click="setTool('points')"
-            >
-              Точки
-            </button>
-            <button type="button" :class="{ active: tool === 'links' }" @click="setTool('links')">
-              Связи
-            </button>
-          </div>
-          <template v-if="tool === 'points'">
-            <div class="types">
-              <button
-                v-for="t in TYPE_KEYS"
-                :key="t"
-                type="button"
-                :class="{ active: newType === t }"
-                @click="newType = t"
-              >
-                <b>{{ t }}</b>
-                <span>{{ POINT_TYPES[t].reward || 'база' }}</span>
-              </button>
-            </div>
-            <p class="hint small">
-              Тап по карте — поставить {{ newType }}. Тяни точку — переместить, тап — изменить.
-            </p>
-          </template>
-          <p v-else class="hint small">
-            Тапай точки по очереди — они соединятся цепочкой. Тап по уже связанной паре —
-            разорвать.
-            {{ linkFrom ? 'Тап по той же точке — закончить цепочку.' : '' }}
-          </p>
-        </template>
-
-        <div class="zoom-bar">
-          <button
-            type="button"
-            class="icon-btn plain"
-            :disabled="zoomIndex === 0"
-            aria-label="Отдалить"
-            @click="setZoom(zoomIndex - 1)"
-          >
-            −
-          </button>
-          <span class="hint small">×{{ zoom }}</span>
-          <button
-            type="button"
-            class="icon-btn plain"
-            :disabled="zoomIndex === ZOOMS.length - 1"
-            aria-label="Приблизить"
-            @click="setZoom(zoomIndex + 1)"
-          >
-            +
-          </button>
-          <span class="spacer" />
-          <template v-if="draft">
-            <button type="button" class="btn btn-secondary small-btn" @click="fileInput?.click()">
-              🖼 {{ shownImage ? 'Сменить фон' : 'Фон' }}
+        <div class="card rise-in" style="--i: 1">
+          <div v-if="!editing" class="toolbar">
+            <button type="button" class="btn btn-secondary small-btn" @click="share">
+              🔗 Поделиться
             </button>
             <button
-              v-if="shownImage"
+              v-if="map.isOwner"
               type="button"
               class="btn btn-secondary small-btn"
-              @click="removeImage"
+              @click="startEdit"
             >
-              ✕ фон
+              ✏️ Конструктор
             </button>
-            <input ref="fileInput" type="file" accept="image/*" hidden @change="onImagePicked" />
-          </template>
-          <label v-else-if="shownImage" class="hint small toggle">
-            <input v-model="showImage" type="checkbox" /> фон
-          </label>
-        </div>
+            <span v-if="shareNote" class="hint small">{{ shareNote }}</span>
+          </div>
 
-        <div ref="viewport" class="viewport">
-          <div
-            ref="surface"
-            class="surface"
-            :class="{ editing, linking: editing && tool === 'links', 'has-image': shownImage }"
-            :style="{ width: `${zoom * 100}%`, aspectRatio: String(layout.aspect) }"
-            @click="onSurfaceClick"
-          >
-            <img
-              v-if="shownImage && (editing || showImage)"
-              :src="shownImage"
-              alt=""
-              class="surface-image"
-              :class="{ faded: editing }"
-              draggable="false"
-            />
-            <svg class="links" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
-              <line
-                v-for="l in lines"
-                :key="l.key"
-                :x1="l.x1"
-                :y1="l.y1"
-                :x2="l.x2"
-                :y2="l.y2"
-                vector-effect="non-scaling-stroke"
-              />
-            </svg>
+          <div v-if="!editing" class="day-bar">
             <button
-              v-for="point in layout.points"
-              :key="point.id"
               type="button"
-              class="point"
-              :class="[
-                POINT_TYPES[point.type].shape,
-                {
-                  selected: point.id === selectedId || point.id === linkFrom,
-                  free: !holderColor(point.id),
-                },
-              ]"
-              :style="{
-                left: `${point.x}%`,
-                top: `${point.y}%`,
-                '--size': `${POINT_TYPES[point.type].size}cqw`,
-                '--point-color': holderColor(point.id) ?? undefined,
-              }"
-              :aria-label="`${point.name || point.type}: ${point.reward} очков`"
-              @click.stop="onPointClick(point)"
-              @pointerdown="onPointDown"
-              @pointermove="onPointMove($event, point)"
-              @pointerup="onPointUp"
-              @pointercancel="onPointUp"
+              class="icon-btn plain"
+              :disabled="day === 1"
+              aria-label="Предыдущий день"
+              @click="goDay(day - 1)"
             >
-              <span class="point-body" />
-              <span class="point-text">
-                <span v-if="point.name" class="point-name">{{ point.name }}</span>
-                <span v-if="point.reward" class="point-reward">{{ point.reward }}</span>
-              </span>
+              ‹
             </button>
-            <p v-if="!layout.points.length" class="surface-empty hint small">
-              {{
-                editing
-                  ? 'Тапни, чтобы поставить первую точку. Можно подложить скриншот карты как фон.'
-                  : map.isOwner
-                    ? 'Точек нет — открой конструктор'
-                    : 'Владелец ещё не нарисовал карту'
-              }}
+            <b class="day-label">
+              День {{ day }}
+              <span class="hint small">из {{ daysCount }}</span>
+            </b>
+            <button
+              type="button"
+              class="icon-btn plain"
+              :disabled="day === daysCount"
+              aria-label="Следующий день"
+              @click="goDay(day + 1)"
+            >
+              ›
+            </button>
+            <span class="spacer" />
+            <button
+              type="button"
+              class="btn btn-secondary small-btn"
+              :disabled="dayBusy"
+              @click="addDay"
+            >
+              + Новый день
+            </button>
+          </div>
+
+          <template v-else-if="draft">
+            <input
+              v-model="draft.name"
+              class="input"
+              type="text"
+              maxlength="40"
+              placeholder="Название карты"
+            />
+            <div class="segmented two">
+              <button
+                type="button"
+                :class="{ active: tool === 'points' }"
+                @click="setTool('points')"
+              >
+                Точки
+              </button>
+              <button type="button" :class="{ active: tool === 'links' }" @click="setTool('links')">
+                Связи
+              </button>
+            </div>
+            <template v-if="tool === 'points'">
+              <div class="types">
+                <button
+                  v-for="t in TYPE_KEYS"
+                  :key="t"
+                  type="button"
+                  :class="{ active: newType === t }"
+                  @click="newType = t"
+                >
+                  <b>{{ t }}</b>
+                  <span>{{ POINT_TYPES[t].reward || 'база' }}</span>
+                </button>
+              </div>
+              <div class="snap-row">
+                <p class="hint small grow">
+                  Тап по карте — поставить {{ newType }}. Тяни точку — переместить, тап — изменить.
+                </p>
+                <button
+                  type="button"
+                  class="btn btn-secondary small-btn snap-toggle"
+                  :class="{ active: snapOn }"
+                  :aria-pressed="snapOn"
+                  title="Притягивать к линиям других точек и центрам клеток. Alt — временно без магнита"
+                  @click="snapOn = !snapOn"
+                >
+                  🧲 {{ snapOn ? 'Магнит' : 'Без магнита' }}
+                </button>
+              </div>
+            </template>
+            <p v-else class="hint small">
+              Тапай точки по очереди — они соединятся цепочкой. Тап по уже связанной паре —
+              разорвать.
+              {{ linkFrom ? 'Тап по той же точке — закончить цепочку.' : '' }}
             </p>
-          </div>
-        </div>
+          </template>
 
-        <div v-if="conflict" class="conflict">
-          <b>Карту уже сохранили с другого устройства.</b>
-          <span class="hint small">Твои правки пока не сохранены.</span>
-          <div class="actions">
-            <button type="button" class="btn" :disabled="saving" @click="overwrite">
-              Перезаписать моей
+          <div class="zoom-bar">
+            <button
+              type="button"
+              class="icon-btn plain"
+              :disabled="zoomIndex === 0"
+              aria-label="Отдалить"
+              @click="setZoom(zoomIndex - 1)"
+            >
+              −
             </button>
-            <button type="button" class="btn btn-secondary" @click="cancelEdit">
-              Взять ту версию
+            <span class="hint small">×{{ zoom }}</span>
+            <button
+              type="button"
+              class="icon-btn plain"
+              :disabled="zoomIndex === ZOOMS.length - 1"
+              aria-label="Приблизить"
+              @click="setZoom(zoomIndex + 1)"
+            >
+              +
+            </button>
+            <span class="spacer" />
+            <template v-if="draft">
+              <button type="button" class="btn btn-secondary small-btn" @click="fileInput?.click()">
+                🖼 {{ shownImage ? 'Сменить фон' : 'Фон' }}
+              </button>
+              <button
+                v-if="shownImage"
+                type="button"
+                class="btn btn-secondary small-btn"
+                @click="removeImage"
+              >
+                ✕ фон
+              </button>
+              <input ref="fileInput" type="file" accept="image/*" hidden @change="onImagePicked" />
+            </template>
+            <label v-else-if="shownImage" class="hint small toggle">
+              <input v-model="showImage" type="checkbox" /> фон
+            </label>
+          </div>
+
+          <div ref="viewport" class="viewport">
+            <div
+              ref="surface"
+              class="surface"
+              :class="{ editing, linking: editing && tool === 'links', 'has-image': shownImage }"
+              :style="{ width: `${zoom * 100}%`, aspectRatio: String(layout.aspect) }"
+              @click="onSurfaceClick"
+            >
+              <img
+                v-if="shownImage && (editing || showImage)"
+                :src="shownImage"
+                alt=""
+                class="surface-image"
+                :class="{ faded: editing }"
+                draggable="false"
+              />
+              <svg
+                class="links"
+                viewBox="0 0 100 100"
+                preserveAspectRatio="none"
+                aria-hidden="true"
+              >
+                <line
+                  v-for="l in lines"
+                  :key="l.key"
+                  :x1="l.x1"
+                  :y1="l.y1"
+                  :x2="l.x2"
+                  :y2="l.y2"
+                  vector-effect="non-scaling-stroke"
+                />
+                <line
+                  v-for="g in editing ? guides : []"
+                  :key="g.key"
+                  class="guide"
+                  :x1="g.x1"
+                  :y1="g.y1"
+                  :x2="g.x2"
+                  :y2="g.y2"
+                  vector-effect="non-scaling-stroke"
+                />
+              </svg>
+              <button
+                v-for="point in layout.points"
+                :key="point.id"
+                type="button"
+                class="point"
+                :class="[
+                  POINT_TYPES[point.type].shape,
+                  {
+                    selected: point.id === selectedId || point.id === linkFrom,
+                    free: !holderColor(point.id),
+                  },
+                ]"
+                :style="{
+                  left: `${point.x}%`,
+                  top: `${point.y}%`,
+                  '--size': `${POINT_TYPES[point.type].size}cqw`,
+                  '--point-color': holderColor(point.id) ?? undefined,
+                }"
+                :aria-label="`${point.name || point.type}: ${point.reward} очков`"
+                @click.stop="onPointClick(point)"
+                @pointerdown="onPointDown"
+                @pointermove="onPointMove($event, point)"
+                @pointerup="onPointUp"
+                @pointercancel="onPointUp"
+              >
+                <span class="point-body" />
+                <span class="point-text">
+                  <span v-if="point.name" class="point-name">{{ point.name }}</span>
+                  <span v-if="point.reward" class="point-reward">{{ point.reward }}</span>
+                </span>
+              </button>
+              <p v-if="!layout.points.length" class="surface-empty hint small">
+                {{
+                  editing
+                    ? 'Тапни, чтобы поставить первую точку. Можно подложить скриншот карты как фон.'
+                    : map.isOwner
+                      ? 'Точек нет — открой конструктор'
+                      : 'Владелец ещё не нарисовал карту'
+                }}
+              </p>
+            </div>
+          </div>
+
+          <div v-if="conflict" class="conflict">
+            <b>Карту уже сохранили с другого устройства.</b>
+            <span class="hint small">Твои правки пока не сохранены.</span>
+            <div class="actions">
+              <button type="button" class="btn" :disabled="saving" @click="overwrite">
+                Перезаписать моей
+              </button>
+              <button type="button" class="btn btn-secondary" @click="cancelEdit">
+                Взять ту версию
+              </button>
+            </div>
+          </div>
+
+          <p v-if="errorText" class="error-text">{{ errorText }}</p>
+
+          <div v-if="editing && !conflict" class="actions">
+            <button type="button" class="btn" :disabled="saving" @click="saveEdit">
+              {{ saving ? 'Сохраняем…' : 'Сохранить' }}
+            </button>
+            <button type="button" class="btn btn-secondary" :disabled="saving" @click="cancelEdit">
+              Отмена
+            </button>
+            <button type="button" class="btn btn-secondary danger" @click="deleteMap">
+              {{ confirmDelete ? 'Точно удалить карту для всех?' : 'Удалить карту' }}
             </button>
           </div>
+          <p v-else-if="!editing && layout.points.length" class="hint small">
+            Тапни по точке, чтобы отметить, чья она. Видят все, у кого есть ссылка.
+          </p>
         </div>
-
-        <p v-if="errorText" class="error-text">{{ errorText }}</p>
-
-        <div v-if="editing && !conflict" class="actions">
-          <button type="button" class="btn" :disabled="saving" @click="saveEdit">
-            {{ saving ? 'Сохраняем…' : 'Сохранить' }}
-          </button>
-          <button type="button" class="btn btn-secondary" :disabled="saving" @click="cancelEdit">
-            Отмена
-          </button>
-          <button type="button" class="btn btn-secondary danger" @click="deleteMap">
-            {{ confirmDelete ? 'Точно удалить карту для всех?' : 'Удалить карту' }}
-          </button>
-        </div>
-        <p v-else-if="!editing && layout.points.length" class="hint small">
-          Тапни по точке, чтобы отметить, чья она. Видят все, у кого есть ссылка.
-        </p>
       </div>
 
-      <div v-if="draft" class="card rise-in" style="--i: 2">
-        <h2>Союзы</h2>
-        <div v-for="a in draft.alliances" :key="a.id" class="row">
-          <input v-model="a.color" type="color" class="color" aria-label="Цвет" />
-          <input
-            v-model="a.name"
-            class="input name"
-            type="text"
-            maxlength="24"
-            placeholder="Союз"
-          />
+      <aside class="map-side">
+        <div v-if="draft" class="card rise-in" style="--i: 2">
+          <h2>Союзы</h2>
+          <div v-for="a in draft.alliances" :key="a.id" class="row">
+            <input v-model="a.color" type="color" class="color" aria-label="Цвет" />
+            <input
+              v-model="a.name"
+              class="input name"
+              type="text"
+              maxlength="24"
+              placeholder="Союз"
+            />
+            <button
+              v-if="draft.alliances.length > 1"
+              type="button"
+              class="icon-btn"
+              aria-label="Удалить союз"
+              @click="removeAlliance(a.id)"
+            >
+              ✕
+            </button>
+          </div>
           <button
-            v-if="draft.alliances.length > 1"
+            v-if="draft.alliances.length < 16"
             type="button"
-            class="icon-btn"
-            aria-label="Удалить союз"
-            @click="removeAlliance(a.id)"
+            class="btn btn-secondary"
+            @click="addAlliance"
           >
-            ✕
+            + Добавить союз
+          </button>
+          <p class="hint small">Удалённый союз снимается со всех своих точек после сохранения</p>
+        </div>
+
+        <div class="card rise-in" style="--i: 3">
+          <h2>За день {{ day }}</h2>
+          <p v-if="day === daysCount" class="hint small">
+            Сброс через {{ formatOilMinutes(cycle.minutesLeft) }} (в
+            {{ formatOilClock(cycle.endsAt) }}), если точки никто не перехватит
+          </p>
+          <p v-else class="hint small">Сколько союзы получили в этот день</p>
+          <ul class="legend">
+            <li
+              v-for="row in legend.rows"
+              :key="row.id"
+              :class="{ leader: row.id === legend.leader }"
+            >
+              <span class="dot" :style="{ background: row.color }" />
+              <span class="legend-name">
+                {{ row.name || 'Без имени' }}{{ row.id === legend.leader ? ' 👑' : '' }}
+                <span class="hint small">{{ row.count }} т.</span>
+              </span>
+              <span class="legend-sum">{{ fmt(row.sum) }}</span>
+              <span
+                class="bar"
+                :style="{ width: `${share100(row.sum)}%`, background: row.color }"
+              />
+            </li>
+            <li v-if="legend.free.count">
+              <span class="dot" />
+              <span class="legend-name">
+                Свободно <span class="hint small">{{ legend.free.count }} т.</span>
+              </span>
+              <span class="legend-sum">{{ fmt(legend.free.sum) }}</span>
+            </li>
+          </ul>
+          <p class="hint small">
+            Всего на карте: {{ fmt(legend.total) }} · {{ layout.points.length }} точек
+          </p>
+          <button
+            v-if="!editing && map.isOwner && Object.keys(map.days[day - 1] ?? {}).length"
+            type="button"
+            class="btn btn-secondary"
+            @click="clearHolders"
+          >
+            {{
+              confirmClear
+                ? `Точно освободить все точки дня ${day} для всех?`
+                : 'Освободить все точки дня'
+            }}
           </button>
         </div>
-        <button
-          v-if="draft.alliances.length < 16"
-          type="button"
-          class="btn btn-secondary"
-          @click="addAlliance"
-        >
-          + Добавить союз
-        </button>
-        <p class="hint small">Удалённый союз снимается со всех своих точек после сохранения</p>
-      </div>
 
-      <div class="card rise-in" style="--i: 3">
-        <h2>Итог к сбросу</h2>
-        <p class="hint small">
-          Сброс через {{ formatOilMinutes(cycle.minutesLeft) }} (в
-          {{ formatOilClock(cycle.endsAt) }}), если точки никто не перехватит
-        </p>
-        <ul class="legend">
-          <li
-            v-for="row in legend.rows"
-            :key="row.id"
-            :class="{ leader: row.id === legend.leader }"
+        <div class="card rise-in" style="--i: 4">
+          <h2>Всего за {{ daysCount }} {{ plural(daysCount, ['день', 'дня', 'дней']) }}</h2>
+          <ul class="legend">
+            <li
+              v-for="row in totals.rows"
+              :key="row.id"
+              :class="{ leader: row.id === totals.leader }"
+            >
+              <span class="dot" :style="{ background: row.color }" />
+              <span class="legend-name">
+                {{ row.name || 'Без имени' }}{{ row.id === totals.leader ? ' 👑' : '' }}
+              </span>
+              <span class="legend-sum">{{ fmt(row.sum) }}</span>
+              <span
+                class="bar"
+                :style="{ width: `${shareOfMax(row.sum)}%`, background: row.color }"
+              />
+            </li>
+          </ul>
+          <p class="hint small">Сумма очков по всем дням: каждый день — по точкам того дня</p>
+          <button
+            v-if="!editing && map.isOwner && daysCount > 1"
+            type="button"
+            class="btn btn-secondary danger"
+            :disabled="dayBusy"
+            @click="removeLastDay"
           >
-            <span class="dot" :style="{ background: row.color }" />
-            <span class="legend-name">
-              {{ row.name || 'Без имени' }}{{ row.id === legend.leader ? ' 👑' : '' }}
-              <span class="hint small">{{ row.count }} т.</span>
-            </span>
-            <span class="legend-sum">{{ fmt(row.sum) }}</span>
-            <span class="bar" :style="{ width: `${share100(row.sum)}%`, background: row.color }" />
-          </li>
-          <li v-if="legend.free.count">
-            <span class="dot" />
-            <span class="legend-name">
-              Свободно <span class="hint small">{{ legend.free.count }} т.</span>
-            </span>
-            <span class="legend-sum">{{ fmt(legend.free.sum) }}</span>
-          </li>
-        </ul>
-        <p class="hint small">
-          Всего на карте: {{ fmt(legend.total) }} · {{ layout.points.length }} точек
-        </p>
-        <button
-          v-if="!editing && map.isOwner && Object.keys(map.holders).length"
-          type="button"
-          class="btn btn-secondary"
-          @click="clearHolders"
-        >
-          {{ confirmClear ? 'Точно освободить все точки для всех?' : 'Освободить все точки' }}
-        </button>
-      </div>
+            {{
+              confirmRemoveDay
+                ? `Точно удалить день ${daysCount} для всех?`
+                : `Удалить последний день (${daysCount})`
+            }}
+          </button>
+        </div>
 
-      <div v-if="activityRows.length" class="card rise-in" style="--i: 4">
-        <h2>Только что</h2>
-        <ul class="activity">
-          <li v-for="a in activityRows" :key="a.key">
-            <span class="hint small">{{ a.time }}</span>
-            <span>
-              <b>{{ a.point }}</b> →
-              <template v-if="a.holder">
-                <span class="dot inline" :style="{ background: a.holder.color }" />
-                {{ a.holder.name }}
-              </template>
-              <template v-else>свободна</template>
-            </span>
-            <span v-if="a.by" class="hint small">{{ a.by }}</span>
-          </li>
-        </ul>
-      </div>
-    </template>
+        <div v-if="activityRows.length" class="card rise-in" style="--i: 5">
+          <h2>Только что</h2>
+          <ul class="activity">
+            <li v-for="a in activityRows" :key="a.key">
+              <span class="hint small"
+                >{{ a.time }}<template v-if="daysCount > 1"> · д{{ a.day }}</template></span
+              >
+              <span>
+                <b>{{ a.point }}</b> →
+                <template v-if="a.holder">
+                  <span class="dot inline" :style="{ background: a.holder.color }" />
+                  {{ a.holder.name }}
+                </template>
+                <template v-else>свободна</template>
+              </span>
+              <span v-if="a.by" class="hint small">{{ a.by }}</span>
+            </li>
+          </ul>
+        </div>
+      </aside>
+    </div>
 
     <div v-if="selectedPoint && map" class="sheet">
       <template v-if="draft">
@@ -1161,6 +1562,69 @@ const formatDate = (iso: string) =>
   margin: 0;
 }
 
+.map-grid,
+.map-main,
+.map-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/*
+ * Десктоп: карта слева на всю ширину, легенды — липкой колонкой справа.
+ * Список карт и экраны ошибок — узкой колонкой по центру, как на телефоне.
+ */
+@media (min-width: 1024px) {
+  .map-page.list,
+  .map-page > .card,
+  .map-page > p.hint {
+    width: 100%;
+    max-width: 640px;
+    margin-inline: auto;
+  }
+
+  .map-page.list > .back {
+    align-self: auto;
+  }
+
+  .map-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 380px;
+    gap: 20px;
+    align-items: start;
+  }
+
+  .map-side {
+    position: sticky;
+    top: 16px;
+    max-height: calc(100dvh - 32px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .map-grid .viewport {
+    max-height: calc(100dvh - 280px);
+    min-height: 420px;
+  }
+
+  /* редактор точки — плавающей панелью над правой колонкой, а не шторкой снизу */
+  .map-page.sheet-open {
+    padding-bottom: 0;
+  }
+
+  .map-page .sheet {
+    left: auto;
+    right: max(32px, calc((100vw - 1440px) / 2 + 32px));
+    bottom: 24px;
+    width: 380px;
+    max-height: calc(100dvh - 48px);
+    overflow-y: auto;
+    margin: 0;
+    padding-bottom: 16px;
+    border-radius: 20px;
+  }
+}
+
 .map-page > .hint {
   margin: 0;
 }
@@ -1243,6 +1707,18 @@ const formatDate = (iso: string) =>
   gap: 4px;
 }
 
+.day-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.day-label {
+  min-width: 92px;
+  text-align: center;
+  white-space: nowrap;
+}
+
 .spacer {
   flex: 1;
 }
@@ -1298,7 +1774,18 @@ const formatDate = (iso: string) =>
 }
 
 .types {
-  grid-template-columns: repeat(7, 1fr);
+  grid-template-columns: repeat(5, 1fr);
+}
+
+.base-pick {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.base-pick select {
+  flex: 1;
+  min-width: 0;
 }
 
 .segmented button,
@@ -1345,8 +1832,8 @@ const formatDate = (iso: string) =>
   background-image:
     linear-gradient(rgb(0 0 0 / 6%) 1px, transparent 1px),
     linear-gradient(90deg, rgb(0 0 0 / 6%) 1px, transparent 1px);
-  /* сетка 40×40 */
-  background-size: 2.5% 2.5%;
+  /* сетка 80×80 */
+  background-size: 1.25% 1.25%;
   user-select: none;
   -webkit-user-select: none;
   -webkit-tap-highlight-color: transparent;
@@ -1399,6 +1886,32 @@ const formatDate = (iso: string) =>
   stroke-width: 1.5;
 }
 
+/* направляющая магнита: тоньше и пунктиром, чтобы не путать со связью */
+.links line.guide {
+  stroke: #ec4f97;
+  stroke-width: 1;
+  stroke-dasharray: 4 3;
+}
+
+.snap-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.snap-row .grow {
+  flex: 1;
+  margin: 0;
+}
+
+.snap-toggle {
+  flex-shrink: 0;
+}
+
+.snap-toggle:not(.active) {
+  opacity: 0.6;
+}
+
 .point {
   --point-color: #fff;
   position: absolute;
@@ -1429,8 +1942,8 @@ const formatDate = (iso: string) =>
   position: absolute;
   inset: 0;
   background: var(--point-color);
-  border: 0.25cqw solid #444;
-  box-shadow: 0 0.2cqw 0.6cqw rgb(0 0 0 / 30%);
+  border: 0.16cqw solid #444;
+  box-shadow: 0 0.13cqw 0.4cqw rgb(0 0 0 / 30%);
   transition:
     transform 0.15s var(--ease-spring, ease),
     background-color 0.3s ease;
@@ -1445,8 +1958,8 @@ const formatDate = (iso: string) =>
 }
 
 .point.selected .point-body {
-  outline: 0.5cqw solid var(--accent);
-  outline-offset: 0.3cqw;
+  outline: 0.33cqw solid var(--accent);
+  outline-offset: 0.2cqw;
 }
 
 .point.diamond.selected .point-body {
@@ -1472,13 +1985,13 @@ const formatDate = (iso: string) =>
 }
 
 .point-name {
-  font-size: 0.95cqw;
+  font-size: 0.62cqw;
   font-weight: 600;
   opacity: 0.8;
 }
 
 .point-reward {
-  font-size: 1.15cqw;
+  font-size: 0.75cqw;
   font-weight: 800;
 }
 

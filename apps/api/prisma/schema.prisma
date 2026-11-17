@@ -86,6 +86,8 @@ model OilMap {
   imageType    String?           @map("image_type")
   /// 0 — фона нет
   imageVersion Int               @default(0) @map("image_version")
+  /// сколько дней на карте; держатели у каждого дня свои
+  days         Int               @default(1)
   createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt    DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
   holders      OilMapHolder[]
@@ -99,12 +101,14 @@ model OilMap {
 model OilMapHolder {
   mapId      String   @map("map_id")
   map        OilMap   @relation(fields: [mapId], references: [id], onDelete: Cascade)
+  /// с 1
+  day        Int      @default(1)
   pointId    String   @map("point_id")
   allianceId String   @map("alliance_id")
   /// ник того, кто отметил последним
   updatedBy  String?  @map("updated_by")
   updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  @@id([mapId, pointId])
+  @@id([mapId, day, pointId])
   @@map("oil_map_holders")
 }

@@ -9,6 +9,8 @@ export const OIL_MAP_LIMITS = {
   points: 500,
   links: 1500,
   alliances: 16,
+  // дней на одной карте
+  days: 120,
   // карт у одного владельца
   maps: 30,
   // фон-скриншот, байт
@@ -23,7 +25,7 @@ const localIdSchema = z.string().regex(/^[A-Za-z0-9_-]{1,40}$/, 'id: латин�
 // id карты он же код в ссылке /map?id=
 export const oilMapIdSchema = z.string().regex(/^[A-Za-z0-9]{10}$/);
 
-export const oilPointTypeSchema = z.enum(['XS', 'S', 'M', 'L', 'XL', 'XXL', '★']);
+export const oilPointTypeSchema = z.enum(['XS', 'S◆', 'S', 'M', 'M■', 'L', 'XL', 'XXL', '★']);
 export type OilPointType = z.infer<typeof oilPointTypeSchema>;
 
 const coordSchema = z.number().min(0).max(100);
@@ -71,8 +73,12 @@ export type OilMapPoint = z.infer<typeof oilMapPointSchema>;
 export type OilAlliance = z.infer<typeof oilAllianceSchema>;
 export type OilMapLayout = z.infer<typeof oilMapLayoutSchema>;
 
-// POST /api/oil-maps
-export const oilMapCreateSchema = z.object({ layout: oilMapLayoutSchema });
+// POST /api/oil-maps — from: взять за основу другую карту (точки, связи, союзы и фон
+// копируются, держатели — нет); из layout тогда берётся только имя
+export const oilMapCreateSchema = z.object({
+  layout: oilMapLayoutSchema,
+  from: oilMapIdSchema.optional(),
+});
 
 // PUT /api/oil-maps/:id — version: с какой версии начинали править; устарела → 409
 export const oilMapUpdateSchema = z.object({
@@ -80,19 +86,24 @@ export const oilMapUpdateSchema = z.object({
   layout: oilMapLayoutSchema,
 });
 
+export const oilMapDaySchema = z.int().min(1).max(OIL_MAP_LIMITS.days);
+
 // PUT /api/oil-maps/:id/holders/:pointId — holder: id союза, null — точка свободна.
-// by: ник для ленты изменений на сайте; в Telegram берётся из профиля
+// day: какой день правим (с 1). by: ник для ленты изменений на сайте; в Telegram — из профиля
 export const oilHolderUpdateSchema = z.object({
   holder: localIdSchema.nullable(),
+  day: oilMapDaySchema,
   by: z.string().max(24).optional(),
 });
+
+// DELETE /api/oil-maps/:id/holders?day=N — освободить все точки этого дня (только владелец)
 
 // GET /api/oil-maps/:id
 export interface OilMapResponse {
   id: string;
   layout: OilMapLayout;
-  // точка → союз
-  holders: Record<string, string>;
+  // по дню на элемент (days[0] — день 1): точка → союз
+  days: Record<string, string>[];
   version: number;
   // 0 — фона нет; иначе версия для ссылки GET /api/oil-maps/:id/image?v=
   imageVersion: number;
@@ -107,9 +118,20 @@ export interface OilMapListItem {
   updatedAt: string;
 }
 
+// POST /api/oil-maps/:id/days — новый день с расстановкой последнего;
+// DELETE /api/oil-maps/:id/days/last — убрать последний день (только владелец).
+// Оба шлют событие layout: клиенты перечитывают карту
+
 // GET /api/oil-maps/:id/events — SSE, по одному JSON в data
 export type OilMapEvent =
-  | { type: 'holder'; pointId: string; holder: string | null; by: string | null; at: string }
+  | {
+      type: 'holder';
+      day: number;
+      pointId: string;
+      holder: string | null;
+      by: string | null;
+      at: string;
+    }
   | { type: 'layout'; version: number }
   | { type: 'image'; imageVersion: number }
   | { type: 'presence'; online: number }

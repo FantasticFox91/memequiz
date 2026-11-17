@@ -9,6 +9,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Req,
   Res,
 } from '@nestjs/common';
@@ -19,6 +20,7 @@ import {
   normalizeNickname,
   oilHolderUpdateSchema,
   oilMapCreateSchema,
+  oilMapDaySchema,
   oilMapIdSchema,
   oilMapUpdateSchema,
 } from '@memequiz/shared';
@@ -69,7 +71,7 @@ export class OilMapController {
     @Body() body: CreateDto,
     @CurrentParticipant() identity: ParticipantIdentity,
   ): Promise<OilMapResponse> {
-    return this.maps.create(identity, body.layout);
+    return this.maps.create(identity, body.layout, body.from);
   }
 
   @Get(':id')
@@ -107,16 +109,42 @@ export class OilMapController {
     @CurrentParticipant() identity: ParticipantIdentity,
   ): Promise<void> {
     if (!POINT_ID_RE.test(pointId)) throw new NotFoundException('Этой точки уже нет на карте');
-    return this.maps.setHolder(mapId(id), pointId, body.holder, author(identity, body.by));
+    return this.maps.setHolder(
+      mapId(id),
+      body.day,
+      pointId,
+      body.holder,
+      author(identity, body.by),
+    );
   }
 
   @Delete(':id/holders')
   @HttpCode(204)
   clearHolders(
     @Param('id') id: string,
+    @Query('day') day: string | undefined,
     @CurrentParticipant() identity: ParticipantIdentity,
   ): Promise<void> {
-    return this.maps.clearHolders(mapId(id), identity);
+    const parsed = oilMapDaySchema.safeParse(Number(day));
+    if (!parsed.success) throw new BadRequestException('Не указан день');
+    return this.maps.clearHolders(mapId(id), identity, parsed.data);
+  }
+
+  // новый день может добавить любой со ссылкой — как и отмечать держателей
+  @Post(':id/days')
+  @HttpCode(204)
+  @Throttle(OIL_MAP_CREATE_LIMITS)
+  addDay(@Param('id') id: string): Promise<void> {
+    return this.maps.addDay(mapId(id));
+  }
+
+  @Delete(':id/days/last')
+  @HttpCode(204)
+  removeLastDay(
+    @Param('id') id: string,
+    @CurrentParticipant() identity: ParticipantIdentity,
+  ): Promise<void> {
+    return this.maps.removeLastDay(mapId(id), identity);
   }
 
   // тело — сами байты картинки (Content-Type: image/jpeg|png|webp), raw-парсер в main.ts

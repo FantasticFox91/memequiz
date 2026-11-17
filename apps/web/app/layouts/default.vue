@@ -1,5 +1,10 @@
+<script setup lang="ts">
+// страница может попросить широкий макет на десктопе: definePageMeta({ wide: true })
+const route = useRoute();
+</script>
+
 <template>
-  <div class="layout">
+  <div class="layout" :class="{ wide: route.meta.wide }">
     <header class="header">
       <NuxtLink to="/" class="logo">MemeQuiz</NuxtLink>
       <nav class="nav">
@@ -38,6 +43,14 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+@media (min-width: 1024px) {
+  .layout.wide {
+    max-width: 1440px;
+    padding-left: calc(32px + var(--inset-left));
+    padding-right: calc(32px + var(--inset-right));
+  }
 }
 
 /* в Telegram 100vh/dvh врут, пока панель тянется; stable height выставляет telegram-web-app.js */
