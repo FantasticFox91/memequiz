@@ -11,6 +11,9 @@ RUN pnpm install --offline --frozen-lockfile --filter @memequiz/web...
 # адрес сайта для абсолютных og:image/og:url (превью ссылки); пустой — пути относительные
 ARG SITE_ADDRESS=
 ENV SITE_ADDRESS=$SITE_ADDRESS
+# false — без скрипта Telegram Mini App (сервер в РФ: только сайт)
+ARG TELEGRAM_SDK=true
+ENV TELEGRAM_SDK=$TELEGRAM_SDK
 # собирает shared, затем nuxt generate
 RUN pnpm --filter @memequiz/web... build
 

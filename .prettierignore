@@ -6,3 +6,4 @@ apps/api/src/generated/
 apps/api/prisma/migrations/
 docs/
 sandbox/
+apps/web/public/telegram-web-app.js

@@ -1,6 +1,8 @@
 // адрес сайта на момент сборки (Docker: из SITE_ADDRESS). og:image и og:url должны быть абсолютными,
 // иначе мессенджеры не покажут превью; без адреса (локально) пути относительные
 const SITE_URL = process.env.SITE_ADDRESS ? `https://${process.env.SITE_ADDRESS}` : '';
+// TELEGRAM_SDK=false — сборка без Mini App (сервер в РФ открывают только как сайт)
+const TELEGRAM_SDK = process.env.TELEGRAM_SDK !== 'false';
 const TITLE = 'MemeQuiz — викторина по мемам';
 const DESCRIPTION =
   'Угадай мем, вспомни фразу и персонажа. Проверь, насколько ты в теме, и сравни результат с друзьями.';
@@ -40,8 +42,10 @@ export default defineNuxtConfig({
         { rel: 'apple-touch-icon', href: '/apple-touch-icon.png' },
       ],
       // SDK Mini App: синхронно в head, до приложения (так требует Telegram).
-      // Вне Telegram ничего не делает; если не загрузится, api-авторизация всё равно работает
-      script: [{ src: 'https://telegram.org/js/telegram-web-app.js' }],
+      // Вне Telegram ничего не делает; если не загрузится, api-авторизация всё равно работает.
+      // Копия с нашего домена, а не с telegram.org: в России telegram.org режут, и без VPN
+      // блокирующий скрипт вешал загрузку страницы. Обновить: pnpm tg-sdk:update
+      script: TELEGRAM_SDK ? [{ src: '/telegram-web-app.js' }] : [],
     },
   },
 
