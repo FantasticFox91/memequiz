@@ -615,6 +615,28 @@ function onPointDown(event: PointerEvent) {
   (event.currentTarget as Element).setPointerCapture(event.pointerId);
 }
 
+/*
+ * iOS и WebView Telegram не всегда слушают touch-action: none — палец, начавший тянуть
+ * точку, всё равно прокручивает карту или страницу. Пока идёт перетаскивание, гасим
+ * touchmove сами (слушатель не passive, иначе preventDefault не работает).
+ */
+function blockTouchScroll(event: TouchEvent) {
+  if (drag && event.cancelable) event.preventDefault();
+}
+onMounted(() => document.addEventListener('touchmove', blockTouchScroll, { passive: false }));
+onUnmounted(() => document.removeEventListener('touchmove', blockTouchScroll));
+
+// в конструкторе вертикальный свайп Telegram сворачивал бы Mini App вместо перетаскивания
+watch(editing, (on) => {
+  const webApp = telegram.webApp;
+  if (!webApp || !telegram.supports('7.7')) return;
+  if (on) webApp.disableVerticalSwipes?.();
+  else webApp.enableVerticalSwipes?.();
+});
+onUnmounted(() => {
+  if (telegram.supports('7.7')) telegram.webApp?.enableVerticalSwipes?.();
+});
+
 function onPointMove(event: PointerEvent, point: OilMapPoint) {
   if (!drag || drag.pointerId !== event.pointerId) return;
   if (!drag.moved && Math.hypot(event.clientX - drag.startX, event.clientY - drag.startY) < 6) {
@@ -1603,8 +1625,7 @@ const formatDate = (iso: string) =>
   }
 
   .map-grid .viewport {
-    max-height: calc(100dvh - 280px);
-    min-height: 420px;
+    height: max(420px, calc(100svh - 280px));
   }
 
   /* редактор точки — плавающей панелью над правой колонкой, а не шторкой снизу */
@@ -1816,9 +1837,13 @@ const formatDate = (iso: string) =>
   border-color: var(--accent);
 }
 
+/*
+ * Высота фиксированная: dvh меняется вместе с панелями браузера и при растягивании
+ * Telegram, и карта прыгала под пальцем. svh — стабильная высота, в Telegram — его своя.
+ */
 .viewport {
   overflow: auto;
-  max-height: 75dvh;
+  height: calc(var(--tg-viewport-stable-height, 100svh) * 0.7);
   border-radius: 12px;
   background: var(--bg);
   overscroll-behavior: contain;

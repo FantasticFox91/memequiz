@@ -39,6 +39,9 @@ interface TelegramWebApp {
   openTelegramLink(url: string): void;
   enableClosingConfirmation(): void;
   disableClosingConfirmation(): void;
+  // Bot API 7.7+
+  disableVerticalSwipes?(): void;
+  enableVerticalSwipes?(): void;
   MainButton: TelegramBottomButton;
   BackButton: TelegramBackButton;
   HapticFeedback: TelegramHapticFeedback;
