@@ -425,6 +425,52 @@ function setZoom(index: number) {
   });
 }
 
+// ---------- полный экран ----------
+
+/*
+ * Свой оверлей вместо Fullscreen API: в iOS и WebView Telegram он не работает.
+ * Карта та же самая — тапы по точкам и шторка работают как обычно.
+ */
+const fullscreen = ref(false);
+
+// размер окна меняется — сохраняем, какая часть карты была в центре
+function setFullscreen(on: boolean) {
+  const el = viewport.value;
+  if (fullscreen.value === on) return;
+  const fx = el ? (el.scrollLeft + el.clientWidth / 2) / el.scrollWidth : 0.5;
+  const fy = el ? (el.scrollTop + el.clientHeight / 2) / el.scrollHeight : 0.5;
+  fullscreen.value = on;
+  haptics.selection();
+  nextTick(() => {
+    if (!el) return;
+    el.scrollLeft = fx * el.scrollWidth - el.clientWidth / 2;
+    el.scrollTop = fy * el.scrollHeight - el.clientHeight / 2;
+  });
+}
+
+function onFullscreenKey(event: KeyboardEvent) {
+  if (event.key !== 'Escape' || !fullscreen.value) return;
+  // Esc сначала закрывает шторку точки, потом полный экран
+  if (selectedId.value) selectedId.value = null;
+  else setFullscreen(false);
+}
+onMounted(() => document.addEventListener('keydown', onFullscreenKey));
+onUnmounted(() => document.removeEventListener('keydown', onFullscreenKey));
+
+// страница под оверлеем не должна прокручиваться
+watch(fullscreen, (on) => document.documentElement.classList.toggle('map-fullscreen', on));
+onUnmounted(() => document.documentElement.classList.remove('map-fullscreen'));
+
+// «Назад» (Telegram или браузера) в полном экране — выйти из него, а не со страницы
+function exitFullscreenFirst() {
+  if (!fullscreen.value) return true;
+  selectedId.value = null;
+  setFullscreen(false);
+  return false;
+}
+onBeforeRouteUpdate(exitFullscreenFirst);
+onBeforeRouteLeave(exitFullscreenFirst);
+
 // ---------- точки на карте ----------
 
 const surface = ref<HTMLElement>();
@@ -626,13 +672,17 @@ function blockTouchScroll(event: TouchEvent) {
 onMounted(() => document.addEventListener('touchmove', blockTouchScroll, { passive: false }));
 onUnmounted(() => document.removeEventListener('touchmove', blockTouchScroll));
 
-// в конструкторе вертикальный свайп Telegram сворачивал бы Mini App вместо перетаскивания
-watch(editing, (on) => {
-  const webApp = telegram.webApp;
-  if (!webApp || !telegram.supports('7.7')) return;
-  if (on) webApp.disableVerticalSwipes?.();
-  else webApp.enableVerticalSwipes?.();
-});
+// в конструкторе и в полном экране вертикальный свайп Telegram сворачивал бы Mini App
+// вместо перетаскивания точки или прокрутки карты
+watch(
+  () => editing.value || fullscreen.value,
+  (on) => {
+    const webApp = telegram.webApp;
+    if (!webApp || !telegram.supports('7.7')) return;
+    if (on) webApp.disableVerticalSwipes?.();
+    else webApp.enableVerticalSwipes?.();
+  },
+);
 onUnmounted(() => {
   if (telegram.supports('7.7')) telegram.webApp?.enableVerticalSwipes?.();
 });
@@ -1071,7 +1121,7 @@ const formatDate = (iso: string) =>
           </span>
         </div>
 
-        <div class="card rise-in" style="--i: 1">
+        <div class="card rise-in" :class="{ 'has-fullscreen': fullscreen }" style="--i: 1">
           <div v-if="!editing" class="toolbar">
             <button type="button" class="btn btn-secondary small-btn" @click="share">
               🔗 Поделиться
@@ -1177,128 +1227,183 @@ const formatDate = (iso: string) =>
             </p>
           </template>
 
-          <div class="zoom-bar">
-            <button
-              type="button"
-              class="icon-btn plain"
-              :disabled="zoomIndex === 0"
-              aria-label="Отдалить"
-              @click="setZoom(zoomIndex - 1)"
-            >
-              −
-            </button>
-            <span class="hint small">×{{ zoom }}</span>
-            <button
-              type="button"
-              class="icon-btn plain"
-              :disabled="zoomIndex === ZOOMS.length - 1"
-              aria-label="Приблизить"
-              @click="setZoom(zoomIndex + 1)"
-            >
-              +
-            </button>
-            <span class="spacer" />
-            <template v-if="draft">
-              <button type="button" class="btn btn-secondary small-btn" @click="fileInput?.click()">
-                🖼 {{ shownImage ? 'Сменить фон' : 'Фон' }}
-              </button>
+          <div class="map-stage" :class="{ fullscreen }">
+            <div class="zoom-bar">
               <button
-                v-if="shownImage"
+                v-if="fullscreen"
                 type="button"
-                class="btn btn-secondary small-btn"
-                @click="removeImage"
+                class="icon-btn plain close-full"
+                aria-label="Закрыть полный экран"
+                @click="setFullscreen(false)"
               >
-                ✕ фон
+                ✕
               </button>
-              <input ref="fileInput" type="file" accept="image/*" hidden @change="onImagePicked" />
-            </template>
-            <label v-else-if="shownImage" class="hint small toggle">
-              <input v-model="showImage" type="checkbox" /> фон
-            </label>
-          </div>
+              <template v-if="fullscreen && !editing">
+                <button
+                  type="button"
+                  class="icon-btn plain"
+                  :disabled="day === 1"
+                  aria-label="Предыдущий день"
+                  @click="goDay(day - 1)"
+                >
+                  ‹
+                </button>
+                <b class="day-label compact"
+                  >Д{{ day }}<span class="hint small">/{{ daysCount }}</span></b
+                >
+                <button
+                  type="button"
+                  class="icon-btn plain"
+                  :disabled="day === daysCount"
+                  aria-label="Следующий день"
+                  @click="goDay(day + 1)"
+                >
+                  ›
+                </button>
+                <span class="spacer" />
+              </template>
+              <button
+                type="button"
+                class="icon-btn plain"
+                :disabled="zoomIndex === 0"
+                aria-label="Отдалить"
+                @click="setZoom(zoomIndex - 1)"
+              >
+                −
+              </button>
+              <span class="hint small">×{{ zoom }}</span>
+              <button
+                type="button"
+                class="icon-btn plain"
+                :disabled="zoomIndex === ZOOMS.length - 1"
+                aria-label="Приблизить"
+                @click="setZoom(zoomIndex + 1)"
+              >
+                +
+              </button>
+              <span v-if="!fullscreen || editing" class="spacer" />
+              <template v-if="draft && !fullscreen">
+                <button
+                  type="button"
+                  class="btn btn-secondary small-btn"
+                  @click="fileInput?.click()"
+                >
+                  🖼 {{ shownImage ? 'Сменить фон' : 'Фон' }}
+                </button>
+                <button
+                  v-if="shownImage"
+                  type="button"
+                  class="btn btn-secondary small-btn"
+                  @click="removeImage"
+                >
+                  ✕ фон
+                </button>
+                <input
+                  ref="fileInput"
+                  type="file"
+                  accept="image/*"
+                  hidden
+                  @change="onImagePicked"
+                />
+              </template>
+              <label v-else-if="shownImage && !editing" class="hint small toggle">
+                <input v-model="showImage" type="checkbox" /> фон
+              </label>
+              <button
+                v-if="!fullscreen"
+                type="button"
+                class="icon-btn plain"
+                aria-label="Открыть карту на весь экран"
+                title="На весь экран"
+                @click="setFullscreen(true)"
+              >
+                ⛶
+              </button>
+            </div>
 
-          <div ref="viewport" class="viewport">
-            <div
-              ref="surface"
-              class="surface"
-              :class="{ editing, linking: editing && tool === 'links', 'has-image': shownImage }"
-              :style="{ width: `${zoom * 100}%`, aspectRatio: String(layout.aspect) }"
-              @click="onSurfaceClick"
-            >
-              <img
-                v-if="shownImage && (editing || showImage)"
-                :src="shownImage"
-                alt=""
-                class="surface-image"
-                :class="{ faded: editing }"
-                draggable="false"
-              />
-              <svg
-                class="links"
-                viewBox="0 0 100 100"
-                preserveAspectRatio="none"
-                aria-hidden="true"
+            <div ref="viewport" class="viewport">
+              <div
+                ref="surface"
+                class="surface"
+                :class="{ editing, linking: editing && tool === 'links', 'has-image': shownImage }"
+                :style="{ width: `${zoom * 100}%`, aspectRatio: String(layout.aspect) }"
+                @click="onSurfaceClick"
               >
-                <line
-                  v-for="l in lines"
-                  :key="l.key"
-                  :x1="l.x1"
-                  :y1="l.y1"
-                  :x2="l.x2"
-                  :y2="l.y2"
-                  vector-effect="non-scaling-stroke"
+                <img
+                  v-if="shownImage && (editing || showImage)"
+                  :src="shownImage"
+                  alt=""
+                  class="surface-image"
+                  :class="{ faded: editing }"
+                  draggable="false"
                 />
-                <line
-                  v-for="g in editing ? guides : []"
-                  :key="g.key"
-                  class="guide"
-                  :x1="g.x1"
-                  :y1="g.y1"
-                  :x2="g.x2"
-                  :y2="g.y2"
-                  vector-effect="non-scaling-stroke"
-                />
-              </svg>
-              <button
-                v-for="point in layout.points"
-                :key="point.id"
-                type="button"
-                class="point"
-                :class="[
-                  POINT_TYPES[point.type].shape,
-                  {
-                    selected: point.id === selectedId || point.id === linkFrom,
-                    free: !holderColor(point.id),
-                  },
-                ]"
-                :style="{
-                  left: `${point.x}%`,
-                  top: `${point.y}%`,
-                  '--size': `${POINT_TYPES[point.type].size}cqw`,
-                  '--point-color': holderColor(point.id) ?? undefined,
-                }"
-                :aria-label="`${point.name || point.type}: ${point.reward} очков`"
-                @click.stop="onPointClick(point)"
-                @pointerdown="onPointDown"
-                @pointermove="onPointMove($event, point)"
-                @pointerup="onPointUp"
-                @pointercancel="onPointUp"
-              >
-                <span class="point-body" />
-                <span class="point-text">
-                  <span v-if="point.name" class="point-name">{{ point.name }}</span>
-                  <span v-if="point.reward" class="point-reward">{{ point.reward }}</span>
-                </span>
-              </button>
-              <p v-if="!layout.points.length" class="surface-empty hint small">
-                {{
-                  editing
-                    ? 'Тапни, чтобы поставить первую точку. Можно подложить скриншот карты как фон.'
-                    : map.isOwner
-                      ? 'Точек нет — открой конструктор'
-                      : 'Владелец ещё не нарисовал карту'
-                }}
-              </p>
+                <svg
+                  class="links"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                >
+                  <line
+                    v-for="l in lines"
+                    :key="l.key"
+                    :x1="l.x1"
+                    :y1="l.y1"
+                    :x2="l.x2"
+                    :y2="l.y2"
+                    vector-effect="non-scaling-stroke"
+                  />
+                  <line
+                    v-for="g in editing ? guides : []"
+                    :key="g.key"
+                    class="guide"
+                    :x1="g.x1"
+                    :y1="g.y1"
+                    :x2="g.x2"
+                    :y2="g.y2"
+                    vector-effect="non-scaling-stroke"
+                  />
+                </svg>
+                <button
+                  v-for="point in layout.points"
+                  :key="point.id"
+                  type="button"
+                  class="point"
+                  :class="[
+                    POINT_TYPES[point.type].shape,
+                    {
+                      selected: point.id === selectedId || point.id === linkFrom,
+                      free: !holderColor(point.id),
+                    },
+                  ]"
+                  :style="{
+                    left: `${point.x}%`,
+                    top: `${point.y}%`,
+                    '--size': `${POINT_TYPES[point.type].size}cqw`,
+                    '--point-color': holderColor(point.id) ?? undefined,
+                  }"
+                  :aria-label="`${point.name || point.type}: ${point.reward} очков`"
+                  @click.stop="onPointClick(point)"
+                  @pointerdown="onPointDown"
+                  @pointermove="onPointMove($event, point)"
+                  @pointerup="onPointUp"
+                  @pointercancel="onPointUp"
+                >
+                  <span class="point-body" />
+                  <span class="point-text">
+                    <span v-if="point.name" class="point-name">{{ point.name }}</span>
+                    <span v-if="point.reward" class="point-reward">{{ point.reward }}</span>
+                  </span>
+                </button>
+                <p v-if="!layout.points.length" class="surface-empty hint small">
+                  {{
+                    editing
+                      ? 'Тапни, чтобы поставить первую точку. Можно подложить скриншот карты как фон.'
+                      : map.isOwner
+                        ? 'Точек нет — открой конструктор'
+                        : 'Владелец ещё не нарисовал карту'
+                  }}
+                </p>
+              </div>
             </div>
           </div>
 
@@ -1473,7 +1578,7 @@ const formatDate = (iso: string) =>
       </aside>
     </div>
 
-    <div v-if="selectedPoint && map" class="sheet">
+    <div v-if="selectedPoint && map" class="sheet" :class="{ 'over-fullscreen': fullscreen }">
       <template v-if="draft">
         <div class="sheet-head">
           <h3>Точка</h3>
@@ -1849,6 +1954,53 @@ const formatDate = (iso: string) =>
   overscroll-behavior: contain;
 }
 
+.map-stage {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+/* карта поверх всего; отступы — под вырезы экрана и кнопки Telegram */
+.map-stage.fullscreen {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  gap: 6px;
+  padding: calc(8px + var(--inset-top, 0px)) calc(8px + var(--inset-right, 0px))
+    calc(8px + var(--inset-bottom, 0px)) calc(8px + var(--inset-left, 0px));
+  background: var(--secondary-bg);
+  animation: pop-in 0.2s var(--ease-out, ease) both;
+}
+
+.map-stage.fullscreen .zoom-bar {
+  flex-wrap: nowrap;
+}
+
+.map-stage.fullscreen .viewport {
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+/* анимация карточки с translate сделала бы её контейнером для position: fixed */
+.card.has-fullscreen {
+  animation: none;
+}
+
+.day-label.compact {
+  min-width: 0;
+  padding: 0 4px;
+}
+
+.close-full {
+  font-weight: 700;
+}
+
+:global(html.map-fullscreen),
+:global(html.map-fullscreen body) {
+  overflow: hidden;
+}
+
 .surface {
   position: relative;
   /* размеры точек — в cqw: точки растут вместе с масштабом карты */
@@ -2179,6 +2331,10 @@ const formatDate = (iso: string) =>
   background: var(--secondary-bg);
   box-shadow: 0 -6px 24px rgb(0 0 0 / 25%);
   animation: rise-in 0.25s var(--ease-out, ease) both;
+}
+
+.sheet.over-fullscreen {
+  z-index: 30;
 }
 
 .sheet h3 {
