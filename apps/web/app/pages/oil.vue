@@ -62,9 +62,9 @@ const rates = computed(() => OIL_TOWERS[state.tower].rates);
 const maxPerDay = computed(() => oilMaxPerDay(rates.value));
 
 // пустое поле или мусор — 0, без отрицательных и дробных
-function clean(value: unknown, max = Infinity): number {
+function clean(value: unknown): number {
   const n = Math.floor(Number(value));
-  return Number.isFinite(n) ? Math.min(Math.max(n, 0), max) : 0;
+  return Number.isFinite(n) ? Math.max(n, 0) : 0;
 }
 
 // начисление с момента ввода: каждая сторона получает очки своих точек за прошедшие минуты
@@ -90,23 +90,6 @@ function commit() {
 }
 
 /*
- * Потолок для поля: с начала цикла вышка выдала всем вместе не больше totalRate × прошедшие минуты,
- * значит одной стороне достаётся максимум это минус то, что уже набрали остальные.
- */
-const cycleMinutes = computed(() =>
-  cycle.value.paused ? 0 : OIL_DAY_MINUTES - cycle.value.minutesLeft,
-);
-const cycleCap = computed(() => totalRate.value * cycleMinutes.value);
-const enemiesSum = computed(() => enemiesLive.value.reduce((sum, e) => sum + e.score, 0));
-
-const ourMax = computed(() => Math.max(cycleCap.value - enemiesSum.value, 0));
-
-function enemyMax(index: number): number {
-  const others = enemiesSum.value - (enemiesLive.value[index]?.score ?? 0);
-  return Math.max(cycleCap.value - ourLive.value - others, 0);
-}
-
-/*
  * Пока поле в фокусе, показываем введённый текст, а не живой счёт: иначе тик таймера
  * перерисовывает страницу и Vue возвращает в поле старое значение посреди ввода.
  */
@@ -124,20 +107,18 @@ function dropDraft(key: string) {
   delete drafts[key];
 }
 
-// обрезанное значение возвращаем в поле: если computed не изменился, Vue сам его не перерисует
+// очищенное значение возвращаем в поле: если computed не изменился, Vue сам его не перерисует
 function setOurScore(input: HTMLInputElement) {
-  const max = ourMax.value;
   commit();
-  state.ourScore = clean(input.value, max);
+  state.ourScore = clean(input.value);
   input.value = String(state.ourScore);
   dropDraft(OIL_US);
 }
 
 function setEnemyScore(index: number, input: HTMLInputElement) {
-  const max = enemyMax(index);
   commit();
   const enemy = state.enemies[index]!;
-  enemy.score = clean(input.value, max);
+  enemy.score = clean(input.value);
   input.value = String(enemy.score);
   dropDraft(enemy.id);
 }
@@ -310,7 +291,6 @@ function mskLabel(msk: string, local: Date): string {
           type="number"
           inputmode="numeric"
           min="0"
-          :title="`Максимум сейчас: ${fmt(ourMax)}`"
           @input="setDraft(OIL_US, $event)"
           @blur="dropDraft(OIL_US)"
           @change="setOurScore($event.target as HTMLInputElement)"
@@ -331,7 +311,6 @@ function mskLabel(msk: string, local: Date): string {
           type="number"
           inputmode="numeric"
           min="0"
-          :title="`Максимум сейчас: ${fmt(enemyMax(i))}`"
           @input="setDraft(enemy.id, $event)"
           @blur="dropDraft(enemy.id)"
           @change="setEnemyScore(i, $event.target as HTMLInputElement)"
@@ -346,10 +325,6 @@ function mskLabel(msk: string, local: Date): string {
         </button>
       </div>
       <button type="button" class="btn btn-secondary" @click="addEnemy">+ Добавить врага</button>
-      <p class="hint small">
-        С начала цикла прошло {{ formatOilMinutes(cycleMinutes) }}: все вместе могли набрать не больше
-        {{ fmt(cycleCap) }}. Больше этого поле не примет.
-      </p>
       <p v-if="overMax" class="error-text">
         Больше {{ fmt(maxPerDay) }} за сутки на этой вышке набрать нельзя: проверь очки
       </p>
