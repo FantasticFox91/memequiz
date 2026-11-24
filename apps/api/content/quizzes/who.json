@@ -1,0 +1,262 @@
+{
+  "title": "Это что за персонаж?",
+  "emoji": "👤",
+  "description": "Угадай персонажа по силуэту",
+  "order": 3,
+  "draft": true,
+  "rounds": [
+    {
+      "id": "silhouettes",
+      "title": "Раунд 1. Кто это?",
+      "description": "Смотри на силуэт и пиши имя. 2 балла за правильный ответ",
+      "pick": 20,
+      "questions": [
+        {
+          "id": "w01",
+          "image": "/memes/who-01.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Пухлик"]
+        },
+        {
+          "id": "w02",
+          "image": "/memes/who-02.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Клац-клац"]
+        },
+        {
+          "id": "w03",
+          "image": "/memes/who-03.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Бамбук"]
+        },
+        {
+          "id": "w04",
+          "image": "/memes/who-04.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Кусь-кусь"]
+        },
+        {
+          "id": "w05",
+          "image": "/memes/who-05.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Снежок"]
+        },
+        {
+          "id": "w06",
+          "image": "/memes/who-06.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Белек"]
+        },
+        {
+          "id": "w07",
+          "image": "/memes/who-07.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Торпеда"]
+        },
+        {
+          "id": "w08",
+          "image": "/memes/who-08.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Додо"]
+        },
+        {
+          "id": "w09",
+          "image": "/memes/who-09.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Дымок"]
+        },
+        {
+          "id": "w10",
+          "image": "/memes/who-10.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Крепыш"]
+        },
+        {
+          "id": "w11",
+          "image": "/memes/who-11.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Пушок"]
+        },
+        {
+          "id": "w12",
+          "image": "/memes/who-12.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Прыг-прыг"]
+        },
+        {
+          "id": "w13",
+          "image": "/memes/who-13.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Астра"]
+        },
+        {
+          "id": "w14",
+          "image": "/memes/who-14.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Тони"]
+        },
+        {
+          "id": "w15",
+          "image": "/memes/who-15.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Кики"]
+        },
+        {
+          "id": "w16",
+          "image": "/memes/who-16.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Райт"]
+        },
+        {
+          "id": "w17",
+          "image": "/memes/who-17.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Кэнди", "Кенди"]
+        },
+        {
+          "id": "w18",
+          "image": "/memes/who-18.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Расти"]
+        },
+        {
+          "id": "w19",
+          "image": "/memes/who-19.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Призрак"]
+        },
+        {
+          "id": "w20",
+          "image": "/memes/who-20.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Джейкоб"]
+        },
+        {
+          "id": "w21",
+          "image": "/memes/who-21.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Хирон"]
+        },
+        {
+          "id": "w22",
+          "image": "/memes/who-22.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Фрейя"]
+        },
+        {
+          "id": "w23",
+          "image": "/memes/who-23.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Трэвис", "Тревис"]
+        },
+        {
+          "id": "w24",
+          "image": "/memes/who-24.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Лайла"]
+        },
+        {
+          "id": "w25",
+          "image": "/memes/who-25.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Бэкка", "Бекка", "Бекки"]
+        },
+        {
+          "id": "w26",
+          "image": "/memes/who-26.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Повар"]
+        },
+        {
+          "id": "w27",
+          "image": "/memes/who-27.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Ева"]
+        },
+        {
+          "id": "w28",
+          "image": "/memes/who-28.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Сержант"]
+        },
+        {
+          "id": "w29",
+          "image": "/memes/who-29.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Лаки"]
+        },
+        {
+          "id": "w30",
+          "image": "/memes/who-30.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Мэдди", "Медди"]
+        },
+        {
+          "id": "w31",
+          "image": "/memes/who-31.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Рэй", "Рей"]
+        },
+        {
+          "id": "w32",
+          "image": "/memes/who-32.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Никола"]
+        },
+        {
+          "id": "w33",
+          "image": "/memes/who-33.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Тара"]
+        },
+        {
+          "id": "w34",
+          "image": "/memes/who-34.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Рози"]
+        },
+        {
+          "id": "w35",
+          "image": "/memes/who-35.webp",
+          "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
+          "text": "Кто это?",
+          "acceptedAnswers": ["Тарзан"]
+        }
+      ]
+    }
+  ]
+}

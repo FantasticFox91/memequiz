@@ -1,10 +1,13 @@
 // Исходники мемов из content/memes-src → apps/web/public/memes/*.webp
 // Длинная сторона до 800 px, качество снижается, пока файл не влезет в 200 КБ.
+// Другая папка и префикс имени: node scripts/optimize-memes.mjs <папка> <префикс>
+//   (1.png + префикс who- → who-01.webp; номер дополняется нулём для сортировки)
 import { mkdir, readdir, stat, writeFile } from 'node:fs/promises';
 import { extname, join, parse } from 'node:path';
 import sharp from 'sharp';
 
-const SRC_DIR = 'content/memes-src';
+const SRC_DIR = process.argv[2] ?? 'content/memes-src';
+const PREFIX = process.argv[3] ?? '';
 const OUT_DIR = 'apps/web/public/memes';
 const MAX_SIDE = 800;
 const MAX_BYTES = 200 * 1024;
@@ -25,7 +28,8 @@ async function optimize(file) {
     out = await input.clone().webp({ quality, effort: 6 }).toBuffer();
     if (out.length <= MAX_BYTES) break;
   }
-  const name = `${parse(file).name}.webp`;
+  const base = parse(file).name;
+  const name = `${PREFIX}${PREFIX && /^\d$/.test(base) ? `0${base}` : base}.webp`;
   await writeFile(join(OUT_DIR, name), out);
   return { name, srcBytes: (await stat(join(SRC_DIR, file))).size, bytes: out.length, quality };
 }
