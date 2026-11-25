@@ -219,14 +219,14 @@
           "image": "/memes/who-30.webp",
           "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
           "text": "Кто это?",
-          "acceptedAnswers": ["Мэдди", "Медди"]
+          "acceptedAnswers": ["Рэй", "Рей"]
         },
         {
           "id": "w31",
           "image": "/memes/who-31.webp",
           "imageAlt": "Чёрный силуэт персонажа на ярком фоне",
           "text": "Кто это?",
-          "acceptedAnswers": ["Рэй", "Рей"]
+          "acceptedAnswers": ["Мэдди", "Медди"]
         },
         {
           "id": "w32",
