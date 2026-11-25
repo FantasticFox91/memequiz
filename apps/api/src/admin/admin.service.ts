@@ -1,8 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import type {
-  AdminAnswersQuery,
-  AdminAnswersResponse,
-  AdminParticipantsResponse,
+import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  type AdminAnswersQuery,
+  type AdminAnswersResponse,
+  type AdminParticipantsResponse,
+  questionMaxPoints,
 } from '@memequiz/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { QuestionsService } from '../quiz/questions.service';
@@ -28,6 +29,7 @@ export class AdminService {
             roundTitle: round.title,
             text: q.text,
             acceptedAnswers: q.acceptedAnswers ?? [],
+            maxPoints: questionMaxPoints(q, round),
           })),
       ),
     );
@@ -92,17 +94,35 @@ export class AdminService {
   }
 
   /**
-   * Оценка вручную (0..2). score участника меняется на разницу со старой оценкой ответа:
+   * Оценка вручную (от 0 до maxPoints вопроса). score участника меняется на разницу со старой оценкой ответа:
    * повторный клик ничего не начисляет. Строки ответов блокируются (FOR UPDATE),
    * поэтому две одновременные оценки не посчитают одну разницу дважды.
    */
   async setVerdict(ids: number[], points: number): Promise<void> {
+    const maxPoints = new Map(
+      this.textQuestions().map((q) => [`${q.quizId}:${q.id}`, q.maxPoints]),
+    );
     await this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<{ resultId: number; points: number }[]>`
-        SELECT result_id AS "resultId", points FROM text_answers
-        WHERE id = ANY(${ids}::int[])
-        FOR UPDATE
+      const rows = await tx.$queryRaw<
+        { resultId: number; points: number; quizId: string; questionId: string }[]
+      >`
+        SELECT a.result_id AS "resultId", a.points, r.quiz_id AS "quizId", a.question_id AS "questionId"
+        FROM text_answers a JOIN results r ON r.id = a.result_id
+        WHERE a.id = ANY(${ids}::int[])
+        FOR UPDATE OF a
       `;
+      // у вопроса, удалённого из файла, остаётся только общий предел схемы
+      const over = rows.find(
+        (row) => points > (maxPoints.get(`${row.quizId}:${row.questionId}`) ?? points),
+      );
+      if (over) {
+        throw new BadRequestException({
+          message: 'Validation failed',
+          issues: [
+            { path: 'points', message: `слишком высокая оценка для вопроса "${over.questionId}"` },
+          ],
+        });
+      }
       const deltas = new Map<number, number>();
       for (const row of rows) {
         deltas.set(row.resultId, (deltas.get(row.resultId) ?? 0) + points - row.points);

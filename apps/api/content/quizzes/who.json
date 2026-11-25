@@ -9,6 +9,7 @@
       "title": "Раунд 1. Кто это?",
       "description": "Смотри на силуэт и напиши имя.",
       "pick": 20,
+      "textPoints": 1,
       "questions": [
         {
           "id": "w01",

@@ -7,7 +7,6 @@ import {
   type PublicRound,
   type QuizInfo,
   type Round,
-  TEXT_ANSWER_MAX_POINTS,
   questionMaxPoints,
   roundSize,
 } from '@memequiz/shared';
@@ -108,9 +107,11 @@ export class QuizService {
     rounds: readonly Round[],
     answers: readonly Answer[],
   ): { score: number; total: number; textAnswers: TextAnswer[] } {
-    const questions = rounds.flatMap((r) => r.questions);
+    const questions = rounds.flatMap((r) =>
+      r.questions.map((q) => ({ ...q, maxPoints: questionMaxPoints(q, r) })),
+    );
     const byId = new Map(questions.map((q) => [q.id, q]));
-    const total = questions.reduce((sum, q) => sum + questionMaxPoints(q), 0);
+    const total = questions.reduce((sum, q) => sum + q.maxPoints, 0);
     const issues: string[] = [];
     const textAnswers: TextAnswer[] = [];
 
@@ -137,7 +138,7 @@ export class QuizService {
           continue;
         }
         const points = isAcceptedAnswer(text, question.acceptedAnswers ?? [])
-          ? TEXT_ANSWER_MAX_POINTS
+          ? question.maxPoints
           : 0;
         score += points;
         textAnswers.push({ questionId, text: text.trim(), points });

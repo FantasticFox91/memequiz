@@ -33,13 +33,17 @@ const questionBaseSchema = z.object({
 
 export const ANSWER_TEXT_MAX = 200;
 
-// вопрос с вариантами — 1 балл; текстовый ответ админ оценивает в 0, 1 или 2 балла
-// (например, 1 — угадан только исполнитель). Автопроверка по acceptedAnswers предлагает 2 или 0
+// вопрос с вариантами — 1 балл; текстовый ответ админ оценивает от 0 до textPoints раунда:
+// по умолчанию 0, 1 или 2 (например, 1 — угадан только исполнитель), при textPoints: 1 — 0 или 1.
+// Автопроверка по acceptedAnswers предлагает максимум или 0
 export const TEXT_ANSWER_MAX_POINTS = 2;
 export const textAnswerPointsSchema = z.int().min(0).max(TEXT_ANSWER_MAX_POINTS);
 
-export function questionMaxPoints(question: { options?: unknown }): number {
-  return question.options ? 1 : TEXT_ANSWER_MAX_POINTS;
+export function questionMaxPoints(
+  question: { options?: unknown },
+  round: { textPoints: number },
+): number {
+  return question.options ? 1 : round.textPoints;
 }
 
 // для сравнения текстовых ответов: регистр, ё/е, пунктуация и лишние пробелы не важны
@@ -111,6 +115,8 @@ export const roundSchema = roundBaseSchema
     // сколько случайных вопросов раунда достаётся участнику; без pick — все.
     // Выбор зависит от участника и не меняется при перезагрузке (пока не меняется список вопросов)
     pick: z.int().positive().optional(),
+    // сколько стоит верный текстовый ответ
+    textPoints: z.int().min(1).max(TEXT_ANSWER_MAX_POINTS).default(TEXT_ANSWER_MAX_POINTS),
   })
   .refine((r) => r.pick === undefined || r.pick <= r.questions.length, {
     path: ['pick'],

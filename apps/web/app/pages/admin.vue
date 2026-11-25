@@ -234,17 +234,30 @@ function answerStatus(answer: ParticipantAnswer) {
   return answer.points ? `+${answer.points}` : 'отклонён';
 }
 
-function answerTone(answer: ParticipantAnswer) {
+function answerTone(answer: ParticipantAnswer, verdicts: readonly Verdict[]) {
   if (!answer.reviewed) return null;
-  return VERDICTS.find((v) => v.points === answer.points)?.tone ?? null;
+  return verdicts.find((v) => v.points === answer.points)?.tone ?? null;
 }
 
+type Verdict = { points: number; label: string; tone: 'full' | 'half' | 'none'; aria: string };
+
 // кнопки оценки: +2 — угадано, +1 — частично (например, только исполнитель), 0 — нет
-const VERDICTS = [
+const VERDICTS: readonly Verdict[] = [
   { points: 2, label: '+2', tone: 'full', aria: 'Засчитать полностью, 2 балла' },
   { points: 1, label: '+1', tone: 'half', aria: 'Засчитать частично, 1 балл' },
   { points: 0, label: '✕', tone: 'none', aria: 'Отклонить, 0 баллов' },
-] as const;
+];
+// вопрос на 1 балл: угадано или нет, без «частично»
+const VERDICTS_SINGLE: readonly Verdict[] = [
+  { points: 1, label: '+1', tone: 'full', aria: 'Засчитать, 1 балл' },
+  { points: 0, label: '✕', tone: 'none', aria: 'Отклонить, 0 баллов' },
+];
+
+// вопроса может уже не быть в файле — тогда все кнопки
+const verdictsFor = (question?: { maxPoints: number }) =>
+  question?.maxPoints === 1 ? VERDICTS_SINGLE : VERDICTS;
+const answerVerdicts = (quizId: string, answer: ParticipantAnswer) =>
+  verdictsFor(questionByKey.value.get(`${quizId}:${answer.questionId}`));
 
 function statusLabel(group: Group) {
   if (group.points === null) return 'разные оценки';
@@ -252,9 +265,9 @@ function statusLabel(group: Group) {
   return group.points ? `+${group.points}` : 'отклонён';
 }
 
-function toneClass(group: Group) {
+function toneClass(group: Group, verdicts: readonly Verdict[]) {
   if (!group.reviewed || group.points === null) return null;
-  return VERDICTS.find((v) => v.points === group.points)?.tone ?? null;
+  return verdicts.find((v) => v.points === group.points)?.tone ?? null;
 }
 
 function nicknamesLabel(nicknames: string[]) {
@@ -346,9 +359,9 @@ onMounted(load);
       </div>
 
       <p class="hint note">
-        +2 — угадано, +1 — частично, ✕ — не засчитано. Результат участника появится в лидерборде,
-        когда проверены все его ответы. Частый верный ответ добавьте в
-        <code>acceptedAnswers</code> — автопроверка будет сразу предлагать +2.
+        +2 — угадано, +1 — частично, ✕ — не засчитано. У вопросов на 1 балл только +1 и ✕. Результат
+        участника появится в лидерборде, когда проверены все его ответы. Частый верный ответ
+        добавьте в <code>acceptedAnswers</code> — автопроверка будет сразу предлагать высшую оценку.
       </p>
 
       <div v-if="loading && !loaded" class="center">
@@ -413,7 +426,10 @@ onMounted(load);
               v-for="answer in result.answers"
               :key="answer.id"
               class="group"
-              :class="[answerTone(answer), { reviewed: answer.reviewed }]"
+              :class="[
+                answerTone(answer, answerVerdicts(result.quizId, answer)),
+                { reviewed: answer.reviewed },
+              ]"
             >
               <div class="group-body">
                 <p class="meta">
@@ -431,7 +447,7 @@ onMounted(load);
               </div>
               <div class="actions">
                 <button
-                  v-for="v in VERDICTS"
+                  v-for="v in answerVerdicts(result.quizId, answer)"
                   :key="v.points"
                   type="button"
                   class="verdict"
@@ -480,7 +496,7 @@ onMounted(load);
               v-for="group in groups"
               :key="group.key"
               class="group"
-              :class="[toneClass(group), { reviewed: group.reviewed }]"
+              :class="[toneClass(group, verdictsFor(question)), { reviewed: group.reviewed }]"
             >
               <div class="group-body">
                 <p class="answer">
@@ -494,7 +510,7 @@ onMounted(load);
               </div>
               <div class="actions">
                 <button
-                  v-for="v in VERDICTS"
+                  v-for="v in verdictsFor(question)"
                   :key="v.points"
                   type="button"
                   class="verdict"

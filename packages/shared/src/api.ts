@@ -31,7 +31,7 @@ export const submitRequestSchema = z.object({
 
 // durationMs: время прохождения по часам сервера; null — у старых результатов.
 // pending: текстовые ответы ещё не проверены админом — score скрыт (null), в лидерборде результата нет.
-// total — максимум баллов (текстовый ответ стоит TEXT_ANSWER_MAX_POINTS)
+// total — максимум баллов (текстовый ответ стоит textPoints раунда)
 export const quizResultSchema = z.object({
   quizId: z.string(),
   nickname: z.string(),
@@ -134,6 +134,8 @@ const adminQuestionSchema = z.object({
   roundTitle: z.string(),
   text: z.string(),
   acceptedAnswers: z.array(z.string()),
+  // высшая оценка ответа на этот вопрос (textPoints раунда)
+  maxPoints: textAnswerPointsSchema,
 });
 
 const adminAnswerBaseSchema = z.object({
@@ -177,7 +179,8 @@ export const adminParticipantsResponseSchema = z.object({
   ),
 });
 
-// POST /api/admin/answers/verdict — оценка сразу пачке (одинаковые ответы разных людей): 0, 1 или 2.
+// POST /api/admin/answers/verdict — оценка сразу пачке (одинаковые ответы разных людей):
+// от 0 до maxPoints вопроса, больше — 400.
 // Результат попадает в лидерборд, когда проверены все его текстовые ответы
 export const adminVerdictRequestSchema = z.object({
   ids: z.array(z.int().positive()).min(1).max(1000),

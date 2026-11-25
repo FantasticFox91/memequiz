@@ -48,7 +48,7 @@ model TextAnswer {
   result     Result  @relation(fields: [resultId], references: [id], onDelete: Cascade)
   questionId String  @map("question_id")
   text       String
-  /// 0..2; до проверки — предложение автопроверки по acceptedAnswers
+  /// 0..textPoints раунда; до проверки — предложение автопроверки по acceptedAnswers
   points     Int
   /// true — оценку поставил админ
   reviewed   Boolean @default(false)
