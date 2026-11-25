@@ -3,12 +3,11 @@
   "emoji": "👤",
   "description": "Угадай персонажа по силуэту",
   "order": 3,
-  "draft": true,
   "rounds": [
     {
       "id": "silhouettes",
       "title": "Раунд 1. Кто это?",
-      "description": "Смотри на силуэт и пиши имя. 2 балла за правильный ответ",
+      "description": "Смотри на силуэт и напиши имя.",
       "pick": 20,
       "questions": [
         {
